@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Licencia;
+use App\Models\User;
 use Illuminate\Http\Request;
 use App\Http\Resources\LicenciaResource;
 
@@ -10,14 +11,13 @@ class LicenciaController extends Controller
 {
     public function index()
     {
-        return LicenciaResource::collection(Licencia::with('tipo_licencia','user')->get());
+        return LicenciaResource::collection(Licencia::with('tipo_licencia','asignaciones')->get());
     }
 
     public function store(Request $request)
     {
         $payload = $request->validate([
             'tipo_licencia_id' => 'required|integer|exists:tipo_licencias,id',
-            'user_id' => 'nullable|integer|exists:users,id',
             'clave' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'fecha_vencimiento' => 'nullable|date',
@@ -37,7 +37,6 @@ class LicenciaController extends Controller
         $l = Licencia::findOrFail($id);
         $payload = $request->validate([
             'tipo_licencia_id' => 'sometimes|required|integer|exists:tipo_licencias,id',
-            'user_id' => 'nullable|integer|exists:users,id',
             'clave' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'fecha_vencimiento' => 'nullable|date',
@@ -59,29 +58,39 @@ class LicenciaController extends Controller
         $l = Licencia::findOrFail($request->licencia_id);
         $l->stock = max(0, $l->stock + intval($request->amount));
         $l->save();
-        return new LicenciaResource($l);
+        return new LicenciaResource($l->load('asignaciones'));
     }
 
-    public function asignar($id)
+   public function asignar(Request $request, $id)
     {
-        $l = Licencia::findOrFail($id);
-        $payload = request()->validate(['user_id' => 'required|integer']);
-        if ($l->stock <= 0) {
-            return response()->json(['message' => 'No hay stock disponible'], 422);
+        $payload = $request->validate(['user_id' => 'required|integer|exists:users,id']);
+        $licencia = Licencia::with('asignaciones')->findOrFail($id);
+        $user = User::findOrFail($payload['user_id']);
+        
+        // Usamos el atributo calculado 'disponible'
+        if ($licencia->disponible <= 0) {
+            return response()->json(['message' => 'No hay stock disponible para esta licencia.'], 422);
         }
-        $l->user_id = $payload['user_id'];
-        $l->stock = max(0, $l->stock - 1);
-        $l->save();
-        return new LicenciaResource($l);
+
+        // Verificar que el usuario no tenga ya esta licencia
+        if ($licencia->asignaciones()->where('user_id', $user->id)->exists()) {
+             return response()->json(['message' => 'El usuario ya tiene asignada esta licencia.'], 422);
+        }
+
+        // Asignar usando la tabla intermedia
+        $licencia->asignaciones()->attach($user->id);
+
+        return new LicenciaResource($licencia->load('asignaciones'));
     }
 
-    public function liberar($id)
+    public function liberar(Request $request, $id)
     {
-        $l = Licencia::findOrFail($id);
-        $payload = request()->validate(['user_id' => 'nullable|integer']);
-        $l->user_id = null;
-        $l->stock = $l->stock + 1;
-        $l->save();
-        return new LicenciaResource($l);
+        $payload = $request->validate(['user_id' => 'required|integer|exists:users,id']);
+        $licencia = Licencia::findOrFail($id);
+        
+        // Liberar de la tabla intermedia
+        $licencia->asignaciones()->detach($payload['user_id']);
+        
+        return new LicenciaResource($licencia->load('asignaciones'));
     }
 }

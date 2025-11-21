@@ -22,4 +22,14 @@ class Licencia extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function asignaciones()
+    {
+        return $this->belongsToMany(User::class, 'licencia_user');
+    }
+
+    public function getDisponibleAttribute()
+    {
+        return $this->stock - $this->asignaciones()->count();
+    }
 }
