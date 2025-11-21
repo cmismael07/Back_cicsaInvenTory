@@ -15,7 +15,7 @@ class EquipoController extends Controller
 {
     public function index()
     {
-        return EquipoResource::collection(Equipo::with(['tipo_equipo','ubicacion','responsable'])->paginate(15));
+        return EquipoResource::collection(Equipo::with(['tipo_equipo','ubicacion','responsable'])->get());
     }
 
     public function store(Request $request)

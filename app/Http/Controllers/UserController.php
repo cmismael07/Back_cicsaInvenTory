@@ -11,7 +11,7 @@ class UserController extends Controller
 {
     public function index()
     {
-        return UserResource::collection(User::with(['departamento', 'puesto'])->paginate(15));
+        return UserResource::collection(User::with(['departamento', 'puesto'])->get());
     }
 
     public function store(Request $request)

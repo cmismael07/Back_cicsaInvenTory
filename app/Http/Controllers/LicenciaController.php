@@ -10,7 +10,7 @@ class LicenciaController extends Controller
 {
     public function index()
     {
-        return LicenciaResource::collection(Licencia::with('tipo_licencia','user')->paginate(15));
+        return LicenciaResource::collection(Licencia::with('tipo_licencia','user')->get());
     }
 
     public function store(Request $request)
