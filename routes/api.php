@@ -41,7 +41,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Licencias
     Route::apiResource('tipos-licencia', TipoLicenciaController::class);
     Route::apiResource('licencias', LicenciaController::class);
-    Route::post('/licencias/stock', [LicenciaController::class, 'addStock']);
+    Route::post('/tipos-licencia/{id}/add-stock', [TipoLicenciaController::class, 'addStock']);
+    // Route::post('/licencias/stock', [LicenciaController::class, 'addStock']);
     Route::post('/licencias/{id}/asignar', [LicenciaController::class, 'asignar']);
     Route::post('/licencias/{id}/liberar', [LicenciaController::class, 'liberar']);
 
