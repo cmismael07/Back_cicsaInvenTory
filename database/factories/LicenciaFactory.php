@@ -19,7 +19,6 @@ class LicenciaFactory extends Factory
             'clave' => strtoupper($this->faker->bothify('LIC-########')),
             'fecha_compra' => ($dt2 = $this->faker->optional()->dateTimeBetween('-2 years', 'now')) ? $dt2->format('Y-m-d') : null,
             'fecha_vencimiento' => ($dt = $this->faker->optional()->dateTimeBetween('now', '+2 years')) ? $dt->format('Y-m-d') : null,
-            'stock' => $this->faker->numberBetween(0, 50),
         ];
     }
 }

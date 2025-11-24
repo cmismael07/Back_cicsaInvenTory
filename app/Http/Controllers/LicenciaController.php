@@ -21,7 +21,6 @@ class LicenciaController extends Controller
             'clave' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'fecha_vencimiento' => 'nullable|date',
-            'stock' => 'nullable|integer',
         ]);
         $l = Licencia::create($payload);
         return new LicenciaResource($l);
@@ -40,7 +39,6 @@ class LicenciaController extends Controller
             'clave' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'fecha_vencimiento' => 'nullable|date',
-            'stock' => 'nullable|integer',
         ]);
         $l->update($payload);
         return new LicenciaResource($l);

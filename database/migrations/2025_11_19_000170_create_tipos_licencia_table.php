@@ -12,6 +12,7 @@ return new class extends Migration
             $table->id();
             $table->string('nombre');
             $table->string('version')->nullable();
+            $table->integer('stock')->default(0);
             $table->timestamps();
         });
     }

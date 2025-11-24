@@ -15,7 +15,7 @@ class TipoLicenciaController extends Controller
 
     public function store(Request $request)
     {
-        $t = TipoLicencia::create($request->only(['nombre', 'proveedor', 'descripcion', 'version']));
+        $t = TipoLicencia::create($request->only(['nombre', 'proveedor', 'descripcion', 'version', 'stock']));
         return new TipoLicenciaResource($t);
     }
 
@@ -27,7 +27,7 @@ class TipoLicenciaController extends Controller
     public function update(Request $request, $id)
     {
         $t = TipoLicencia::findOrFail($id);
-        $t->update($request->only(['nombre', 'proveedor', 'descripcion', 'version']));
+        $t->update($request->only(['nombre', 'proveedor', 'descripcion', 'version', 'stock']));
         return new TipoLicenciaResource($t);
     }
 

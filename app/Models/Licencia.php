@@ -11,7 +11,7 @@ class Licencia extends Model
 
     protected $table = 'licencias';
 
-    protected $fillable = ['tipo_licencia_id', 'user_id', 'clave', 'fecha_compra', 'fecha_vencimiento', 'stock'];
+    protected $fillable = ['tipo_licencia_id', 'user_id', 'clave', 'fecha_compra', 'fecha_vencimiento'];
 
     public function tipo_licencia()
     {

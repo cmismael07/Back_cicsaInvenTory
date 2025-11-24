@@ -14,7 +14,6 @@ return new class extends Migration
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('clave')->nullable();
             $table->date('fecha_vencimiento')->nullable();
-            $table->integer('stock')->default(0);
             $table->timestamps();
         });
     }
