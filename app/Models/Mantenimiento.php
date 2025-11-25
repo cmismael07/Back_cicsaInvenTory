@@ -11,7 +11,7 @@ class Mantenimiento extends Model
 
     protected $table = 'mantenimientos';
 
-    protected $fillable = ['equipo_id', 'descripcion', 'fecha_inicio', 'fecha_fin', 'estado', 'costo'];
+    protected $fillable = ['equipo_id', 'descripcion', 'fecha_inicio', 'fecha_fin', 'estado', 'costo', 'proveedor', 'tipo'];
 
     public function equipo()
     {
