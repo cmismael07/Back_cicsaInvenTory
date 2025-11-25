@@ -57,14 +57,25 @@ class LicenciaController extends Controller
 
     public function asignar(Request $request, $id)
     {
-        $payload = $request->validate(['user_id' => 'required|integer|exists:users,id']);
+        // Accept both `user_id` (english) and `usuario_id` (spanish) from frontend
+        $userId = $request->input('user_id') ?? $request->input('usuario_id');
+
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json(['message' => 'The user id field is required.'], 422);
+        }
+
+        $user = User::find($userId);
+        if (! $user) {
+            return response()->json(['message' => 'Usuario no encontrado.'], 422);
+        }
+
         $licencia = Licencia::findOrFail($id);
-        
+
         if ($licencia->user_id) {
             return response()->json(['message' => 'Esta licencia ya está asignada.'], 422);
         }
 
-        $licencia->user_id = $payload['user_id'];
+        $licencia->user_id = $user->id;
         $licencia->save();
 
         return new LicenciaResource($licencia->load('user'));
@@ -72,12 +83,36 @@ class LicenciaController extends Controller
 
     public function liberar(Request $request, $id)
     {
-        $payload = $request->validate(['user_id' => 'required|integer|exists:users,id']);
-        $licencia = Licencia::where('id', $id)->where('user_id', $payload['user_id'])->firstOrFail();
-        
+        // Accept both `user_id` and `usuario_id`, or fallback to authenticated user
+        $userId = $request->input('user_id') ?? $request->input('usuario_id') ?? ($request->user()?->id ?? null);
+
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json(['message' => 'The user id field is required.'], 422);
+        }
+
+        // Find the license first, avoid throwing ModelNotFoundException to return friendly messages
+        $licencia = Licencia::find($id);
+        if (! $licencia) {
+            return response()->json(['message' => 'Licencia no encontrada.'], 404);
+        }
+
+        if (is_null($licencia->user_id)) {
+            return response()->json(['message' => 'La licencia ya está libre.'], 422);
+        }
+
+        if ((int)$licencia->user_id !== (int)$userId) {
+            // If authenticated user is admin allow override, otherwise return clear error
+            $authUser = $request->user();
+            if ($authUser && isset($authUser->rol) && $authUser->rol === 'Administrador') {
+                // allow admin to release any license
+            } else {
+                return response()->json(['message' => 'La licencia no está asignada a ese usuario.'], 403);
+            }
+        }
+
         $licencia->user_id = null;
         $licencia->save();
-        
+
         return new LicenciaResource($licencia);
     }
 }
