@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Departamento;
+use App\Models\Ubicacion;
 use Illuminate\Http\Request;
 use App\Http\Resources\DepartamentoResource;
 
@@ -39,6 +40,18 @@ class DepartamentoController extends Controller
         }
 
         $d = Departamento::create($payload);
+
+        // If this departamento is flagged as bodega, ensure an Ubicacion exists
+        if (! empty($payload['es_bodega'])) {
+            $marker = "AUTO_BODEGA_DEPARTAMENTO_{$d->id}";
+            $exists = Ubicacion::where('descripcion', 'like', "%{$marker}%")->first();
+            if (! $exists) {
+                Ubicacion::create([
+                    'nombre' => $d->nombre,
+                    'descripcion' => "Funciona como bodega IT | {$marker}",
+                ]);
+            }
+        }
         return new DepartamentoResource($d);
     }
 
@@ -71,7 +84,37 @@ class DepartamentoController extends Controller
             $payload['es_bodega'] = $request->boolean('is_bodega');
         }
 
+        $wasBodega = (bool) $d->es_bodega;
         $d->update($payload);
+        $isBodegaNow = (bool) $d->es_bodega;
+
+        // Marker for auto-created ubicaciones for this departamento
+        $marker = "AUTO_BODEGA_DEPARTAMENTO_{$d->id}";
+
+        // If it transitioned to bodega, create Ubicacion if missing
+        if (! $wasBodega && $isBodegaNow) {
+            $exists = Ubicacion::where('descripcion', 'like', "%{$marker}%")->first();
+            if (! $exists) {
+                Ubicacion::create([
+                    'nombre' => $d->nombre,
+                    'descripcion' => "Funciona como bodega IT | {$marker}",
+                ]);
+            }
+        }
+
+        // If it remained a bodega and the nombre changed, update the ubicacion name(s)
+        if ($wasBodega && $isBodegaNow) {
+            Ubicacion::where('descripcion', 'like', "%{$marker}%")->get()->each(function ($u) use ($d) {
+                try { $u->nombre = $d->nombre; $u->save(); } catch (\Throwable $e) { /* ignore */ }
+            });
+        }
+
+        // If it was a bodega and now is not, remove the auto-created Ubicacion(s)
+        if ($wasBodega && ! $isBodegaNow) {
+            Ubicacion::where('descripcion', 'like', "%{$marker}%")->get()->each(function ($u) {
+                try { $u->delete(); } catch (\Throwable $e) { /* ignore */ }
+            });
+        }
         return new DepartamentoResource($d);
     }
 

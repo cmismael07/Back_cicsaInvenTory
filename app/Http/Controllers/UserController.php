@@ -17,7 +17,7 @@ class UserController extends Controller
     public function store(Request $request)
     {
         // Aceptamos claves provenientes del frontend (`correo`, `nombre_usuario`, `nombres`/`apellidos`)
-        $data = $request->only(['name','nombres','apellidos','nombre_usuario','username','email','correo','password','departamento_id','puesto_id','rol','activo']);
+        $data = $request->only(['name','nombres','apellidos','nombre_usuario','username','email','correo','password','departamento_id','puesto_id','rol','activo','numero_empleado','numeroEmpleado','num_empleado']);
 
         // Normalizar email
         $email = $data['email'] ?? $data['correo'] ?? null;
@@ -37,11 +37,19 @@ class UserController extends Controller
             $name = strstr($email, '@', true) ?: $email;
         }
 
+        // Normalize numero_empleado variants and possible object payloads
+        $rawNumero = $data['numero_empleado'] ?? $data['numeroEmpleado'] ?? $data['num_empleado'] ?? null;
+        if (is_array($rawNumero) || is_object($rawNumero)) {
+            $rn = (array) $rawNumero;
+            $rawNumero = $rn['numero_empleado'] ?? $rn['value'] ?? $rn['id'] ?? null;
+        }
+
         $payload = [
             'name' => $name,
             'username' => $username,
             'email' => $email,
             'password' => $data['password'] ?? null,
+            'numero_empleado' => $rawNumero,
             'departamento_id' => $data['departamento_id'] ?? null,
             'puesto_id' => $data['puesto_id'] ?? null,
             'rol' => $data['rol'] ?? null,
@@ -53,6 +61,7 @@ class UserController extends Controller
             'username' => 'nullable|string|unique:users,username',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6',
+            'numero_empleado' => 'nullable|string',
             'departamento_id' => 'nullable|integer|exists:departamentos,id',
             'puesto_id' => 'nullable|integer|exists:puestos,id',
             'rol' => 'nullable|string',
@@ -75,7 +84,7 @@ class UserController extends Controller
     public function update(Request $request, $id)
     {
         $u = User::findOrFail($id);
-        $data = $request->only(['name','nombres','apellidos','nombre_usuario','username','email','correo','password','departamento_id','puesto_id','rol','activo']);
+        $data = $request->only(['name','nombres','apellidos','nombre_usuario','username','email','correo','password','departamento_id','puesto_id','rol','activo','numero_empleado','numeroEmpleado','num_empleado']);
 
         $email = $data['email'] ?? $data['correo'] ?? $u->email;
         $username = $data['username'] ?? $data['nombre_usuario'] ?? $u->username;
@@ -85,11 +94,19 @@ class UserController extends Controller
             $name = trim(($data['nombres'] ?? '') . ' ' . ($data['apellidos'] ?? ''));
         }
 
+        // Normalize numero_empleado variants in update
+        $rawNumeroU = $data['numero_empleado'] ?? $data['numeroEmpleado'] ?? $data['num_empleado'] ?? null;
+        if (is_array($rawNumeroU) || is_object($rawNumeroU)) {
+            $rn = (array) $rawNumeroU;
+            $rawNumeroU = $rn['numero_empleado'] ?? $rn['value'] ?? $rn['id'] ?? null;
+        }
+
         $payload = [
             'name' => $name,
             'username' => $username,
             'email' => $email,
             'departamento_id' => $data['departamento_id'] ?? $u->departamento_id,
+            'numero_empleado' => $rawNumeroU ?? $u->numero_empleado,
             'puesto_id' => $data['puesto_id'] ?? $u->puesto_id,
             'rol' => $data['rol'] ?? $u->rol,
             'activo' => array_key_exists('activo', $data) ? (bool) $data['activo'] : $u->activo,
@@ -99,6 +116,7 @@ class UserController extends Controller
             'name' => 'sometimes|required|string',
             'username' => "nullable|string|unique:users,username,{$id}",
             'email' => "sometimes|required|email|unique:users,email,{$id}",
+            'numero_empleado' => 'nullable|string',
             'departamento_id' => 'nullable|integer|exists:departamentos,id',
             'puesto_id' => 'nullable|integer|exists:puestos,id',
             'rol' => 'nullable|string',
