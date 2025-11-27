@@ -15,6 +15,7 @@ class Equipo extends Model
         'tipo_equipo_id',
         'ubicacion_id',
         'responsable_id',
+        'serie_cargador',
         'codigo_activo',
         'marca',
         'modelo',

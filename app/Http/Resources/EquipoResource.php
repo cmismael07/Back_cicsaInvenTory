@@ -13,6 +13,7 @@ class EquipoResource extends JsonResource
             'id' => $this->id,
             'codigo_activo' => $this->codigo_activo,
             'numero_serie' => $this->serial,
+            'serie_cargador' => $this->serie_cargador ?? null,
             'modelo' => $this->modelo,
             'marca' => $this->marca,
             'tipo_equipo_id' => $this->tipo_equipo_id,

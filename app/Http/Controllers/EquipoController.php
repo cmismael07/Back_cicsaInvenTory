@@ -63,6 +63,9 @@ class EquipoController extends Controller
         if (isset($input['numero_serie']) && ! isset($input['serial'])) {
             $input['serial'] = $input['numero_serie'];
         }
+        if (isset($input['serieCargador']) && ! isset($input['serie_cargador'])) {
+            $input['serie_cargador'] = $input['serieCargador'];
+        }
         if (isset($input['anos_garantia']) && ! isset($input['garantia_meses'])) {
             // Frontend sends warranty in years (anos_garantia); store in months
             $years = $input['anos_garantia'];
@@ -91,7 +94,7 @@ class EquipoController extends Controller
         }
 
         $payload = \Illuminate\Support\Arr::only($input, [
-            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
+            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
 
         $validator = \Illuminate\Support\Facades\Validator::make($payload, [
@@ -102,6 +105,7 @@ class EquipoController extends Controller
             'marca' => 'nullable|string',
             'modelo' => 'nullable|string',
             'serial' => 'nullable|string',
+            'serie_cargador' => 'nullable|string',
             'estado' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'garantia_meses' => 'nullable|integer',
@@ -157,7 +161,7 @@ class EquipoController extends Controller
         }
 
         $payload = \Illuminate\Support\Arr::only($input, [
-            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
+            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
 
         $validator = \Illuminate\Support\Facades\Validator::make($payload, [
@@ -168,6 +172,7 @@ class EquipoController extends Controller
             'marca' => 'nullable|string',
             'modelo' => 'nullable|string',
             'serial' => 'nullable|string',
+            'serie_cargador' => 'nullable|string',
             'estado' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'garantia_meses' => 'nullable|integer',

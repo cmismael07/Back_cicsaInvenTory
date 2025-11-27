@@ -11,7 +11,11 @@ class Departamento extends Model
 
     protected $table = 'departamentos';
 
-    protected $fillable = ['nombre'];
+    protected $fillable = ['nombre', 'es_bodega'];
+
+    protected $casts = [
+        'es_bodega' => 'boolean',
+    ];
 
     public function users()
     {
