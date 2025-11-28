@@ -11,7 +11,7 @@ class Departamento extends Model
 
     protected $table = 'departamentos';
 
-    protected $fillable = ['nombre', 'es_bodega'];
+    protected $fillable = ['nombre', 'es_bodega', 'bodega_ubicacion_id'];
 
     protected $casts = [
         'es_bodega' => 'boolean',
@@ -20,5 +20,10 @@ class Departamento extends Model
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    public function bodegaUbicacion()
+    {
+        return $this->belongsTo(\App\Models\Ubicacion::class, 'bodega_ubicacion_id');
     }
 }

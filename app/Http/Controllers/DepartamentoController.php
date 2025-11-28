@@ -41,15 +41,23 @@ class DepartamentoController extends Controller
 
         $d = Departamento::create($payload);
 
-        // If this departamento is flagged as bodega, ensure an Ubicacion exists
+        // If this departamento is flagged as bodega, ensure an Ubicacion exists and store its id
         if (! empty($payload['es_bodega'])) {
             $marker = "AUTO_BODEGA_DEPARTAMENTO_{$d->id}";
             $exists = Ubicacion::where('descripcion', 'like', "%{$marker}%")->first();
             if (! $exists) {
-                Ubicacion::create([
+                $u = Ubicacion::create([
                     'nombre' => $d->nombre,
                     'descripcion' => "Funciona como bodega IT | {$marker}",
                 ]);
+                $d->bodega_ubicacion_id = $u->id;
+                $d->save();
+            } else {
+                // ensure reference set
+                if (empty($d->bodega_ubicacion_id)) {
+                    $d->bodega_ubicacion_id = $exists->id;
+                    $d->save();
+                }
             }
         }
         return new DepartamentoResource($d);
@@ -91,14 +99,21 @@ class DepartamentoController extends Controller
         // Marker for auto-created ubicaciones for this departamento
         $marker = "AUTO_BODEGA_DEPARTAMENTO_{$d->id}";
 
-        // If it transitioned to bodega, create Ubicacion if missing
+        // If it transitioned to bodega, create Ubicacion if missing and store reference
         if (! $wasBodega && $isBodegaNow) {
             $exists = Ubicacion::where('descripcion', 'like', "%{$marker}%")->first();
             if (! $exists) {
-                Ubicacion::create([
+                $u = Ubicacion::create([
                     'nombre' => $d->nombre,
                     'descripcion' => "Funciona como bodega IT | {$marker}",
                 ]);
+                $d->bodega_ubicacion_id = $u->id;
+                $d->save();
+            } else {
+                if (empty($d->bodega_ubicacion_id)) {
+                    $d->bodega_ubicacion_id = $exists->id;
+                    $d->save();
+                }
             }
         }
 
@@ -107,13 +122,23 @@ class DepartamentoController extends Controller
             Ubicacion::where('descripcion', 'like', "%{$marker}%")->get()->each(function ($u) use ($d) {
                 try { $u->nombre = $d->nombre; $u->save(); } catch (\Throwable $e) { /* ignore */ }
             });
+            // also update stored reference name if present
+            if (! empty($d->bodega_ubicacion_id)) {
+                try {
+                    $uRef = Ubicacion::find($d->bodega_ubicacion_id);
+                    if ($uRef) { $uRef->nombre = $d->nombre; $uRef->save(); }
+                } catch (\Throwable $e) { /* ignore */ }
+            }
         }
 
         // If it was a bodega and now is not, remove the auto-created Ubicacion(s)
         if ($wasBodega && ! $isBodegaNow) {
-            Ubicacion::where('descripcion', 'like', "%{$marker}%")->get()->each(function ($u) {
+            Ubicacion::where('descripcion', 'like', "%{$marker}%")->get()->each(function ($u) use ($d) {
                 try { $u->delete(); } catch (\Throwable $e) { /* ignore */ }
             });
+            // clear the reference
+            $d->bodega_ubicacion_id = null;
+            $d->save();
         }
         return new DepartamentoResource($d);
     }

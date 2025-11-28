@@ -6,6 +6,9 @@ use App\Models\Equipo;
 use App\Models\Mantenimiento;
 use App\Models\HistorialMovimiento;
 use App\Models\Ubicacion;
+use App\Models\Departamento;
+use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use App\Http\Resources\EquipoResource;
 use App\Http\Resources\MantenimientoResource;
@@ -13,6 +16,30 @@ use App\Http\Resources\HistorialMovimientoResource;
 
 class EquipoController extends Controller
 {
+    /**
+     * Buscar recursivamente posibles claves de id dentro de un array/request
+     * Retorna el primer valor encontrado o null.
+     */
+    protected function findIdInPayload(array $payload, array $candidates)
+    {
+        foreach ($candidates as $key) {
+            if (array_key_exists($key, $payload) && $payload[$key] !== null && $payload[$key] !== '') {
+                $val = $payload[$key];
+                if (is_array($val) && array_key_exists('id', $val)) return $val['id'];
+                return $val;
+            }
+        }
+
+        // search nested arrays
+        foreach ($payload as $v) {
+            if (is_array($v)) {
+                $found = $this->findIdInPayload($v, $candidates);
+                if ($found !== null && $found !== '') return $found;
+            }
+        }
+
+        return null;
+    }
     public function index()
     {
         return EquipoResource::collection(Equipo::with(['tipo_equipo','ubicacion','responsable'])->get());
@@ -53,6 +80,7 @@ class EquipoController extends Controller
 
         $mapToId($input, 'ubicacion');
         $mapToId($input, 'tipo_equipo');
+        $mapToId($input, 'departamento');
         $mapToId($input, 'responsable');
 
         if (isset($input['codigoActivo']) && !isset($input['codigo_activo'])) {
@@ -72,13 +100,23 @@ class EquipoController extends Controller
             $input['garantia_meses'] = is_numeric($years) ? (int) ($years * 12) : $years;
         }
 
-        // If ubicacion_id is missing, try env DEFAULT_UBICACION_ID, otherwise use first Ubicacion or create a default one
+        // If ubicacion_id is missing, prefer department's bodega_ubicacion_id when provided
         if (empty($input['ubicacion_id'])) {
-            $defaultId = env('DEFAULT_UBICACION_ID');
-            if ($defaultId) {
-                $exists = Ubicacion::find($defaultId);
-                if ($exists) {
-                    $input['ubicacion_id'] = $defaultId;
+            if (! empty($input['departamento_id'])) {
+                $dep = Departamento::find($input['departamento_id']);
+                if ($dep && ! empty($dep->bodega_ubicacion_id)) {
+                    $input['ubicacion_id'] = $dep->bodega_ubicacion_id;
+                }
+            }
+
+            // Fallback to DEFAULT_UBICACION_ID or first/create
+            if (empty($input['ubicacion_id'])) {
+                $defaultId = env('DEFAULT_UBICACION_ID');
+                if ($defaultId) {
+                    $exists = Ubicacion::find($defaultId);
+                    if ($exists) {
+                        $input['ubicacion_id'] = $defaultId;
+                    }
                 }
             }
 
@@ -92,6 +130,55 @@ class EquipoController extends Controller
                 }
             }
         }
+
+        // Log incoming ubicacion input for diagnosis
+        Log::debug('EquipoController.store incoming ubicacion', ['ubicacion_raw' => $input['ubicacion_id'] ?? null, 'request_all' => $input]);
+
+        // If frontend passed a departamento id into ubicacion_id, prefer mapping to departamento's bodega when
+        // that departamento exists and is marked as es_bodega. This avoids ambiguity when a Ubicacion with the
+        // same numeric id also exists (e.g. departamento id 1 and ubicacion id 1).
+        if (! empty($input['ubicacion_id'])) {
+            try {
+                $maybeDep = Departamento::find($input['ubicacion_id']);
+                if ($maybeDep && ($maybeDep->es_bodega ?? false)) {
+                    // Prefer departamento mapping even if a Ubicacion with same id exists
+                    if (! empty($maybeDep->bodega_ubicacion_id) && Ubicacion::find($maybeDep->bodega_ubicacion_id)) {
+                        $input['ubicacion_id'] = $maybeDep->bodega_ubicacion_id;
+                    } else {
+                        // create an auto bodega ubicacion for this departamento
+                        $created = Ubicacion::create([
+                            'nombre' => $maybeDep->nombre,
+                            'descripcion' => 'Funciona como bodega IT | AUTO_BODEGA_DEPARTAMENTO_'.$maybeDep->id
+                        ]);
+                        $maybeDep->bodega_ubicacion_id = $created->id;
+                        $maybeDep->save();
+                        $input['ubicacion_id'] = $created->id;
+                    }
+                } else {
+                    // If not a bodega-department, only map to departamento when no Ubicacion exists for the id
+                    if (! Ubicacion::find($input['ubicacion_id'])) {
+                        if ($maybeDep) {
+                            if (! empty($maybeDep->bodega_ubicacion_id) && Ubicacion::find($maybeDep->bodega_ubicacion_id)) {
+                                $input['ubicacion_id'] = $maybeDep->bodega_ubicacion_id;
+                            } else {
+                                // create an auto bodega ubicacion for this departamento (backwards-compat)
+                                $created = Ubicacion::create([
+                                    'nombre' => $maybeDep->nombre,
+                                    'descripcion' => 'Funciona como bodega IT | AUTO_BODEGA_DEPARTAMENTO_'.$maybeDep->id
+                                ]);
+                                $maybeDep->bodega_ubicacion_id = $created->id;
+                                $maybeDep->save();
+                                $input['ubicacion_id'] = $created->id;
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $ex) {
+                // ignore and allow validator to handle invalid id
+            }
+        }
+
+        Log::debug('EquipoController.store resolved ubicacion', ['ubicacion_resolved' => $input['ubicacion_id'] ?? null]);
 
         $payload = \Illuminate\Support\Arr::only($input, [
             'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
@@ -245,20 +332,90 @@ class EquipoController extends Controller
         return new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable']));
     }
 
-    public function recepcionar($id)
+    public function recepcionar(Request $request, $id)
     {
         $e = Equipo::findOrFail($id);
         $previousResponsable = $e->responsable_id;
+        $oldUbicacion = $e->ubicacion_id;
         $e->estado = 'recepcionado';
         // Clear responsable when recepcionar
         $e->responsable_id = null;
+
+        // Log incoming request payload for diagnosis
+        Log::debug('EquipoController.recepcionar incoming', ['equipo_id'=>$id, 'request'=>$request->all(), 'current_ubicacion'=>$e->ubicacion_id]);
+
+        // If request provides an ubicacion, prefer it. Accept many shapes and nested forms.
+        $ubicacionCandidates = ['ubicacion_id','ubicacion','ubicacionId','ubicacionID','ubicacionid','to_ubicacion_id','toUbicacionId','to_ubicacion'];
+        $requestedUbicacion = $this->findIdInPayload($request->all(), $ubicacionCandidates);
+
+        if (! empty($requestedUbicacion)) {
+            // Normalize numeric strings
+            if (is_string($requestedUbicacion) && ctype_digit($requestedUbicacion)) {
+                $requestedUbicacion = (int) $requestedUbicacion;
+            }
+            // Prefer mapping to Departamento if the id corresponds to a department marked as bodega.
+            try {
+                $maybeDep = Departamento::find($requestedUbicacion);
+                if ($maybeDep && ($maybeDep->es_bodega ?? false)) {
+                    if (! empty($maybeDep->bodega_ubicacion_id) && Ubicacion::find($maybeDep->bodega_ubicacion_id)) {
+                        $e->ubicacion_id = $maybeDep->bodega_ubicacion_id;
+                    } else {
+                        $created = Ubicacion::create([
+                            'nombre' => $maybeDep->nombre,
+                            'descripcion' => 'Funciona como bodega IT | AUTO_BODEGA_DEPARTAMENTO_'.$maybeDep->id
+                        ]);
+                        $maybeDep->bodega_ubicacion_id = $created->id;
+                        $maybeDep->save();
+                        $e->ubicacion_id = $created->id;
+                    }
+                } elseif (! empty($requestedUbicacion) && Ubicacion::find($requestedUbicacion)) {
+                    // If not a bodega-department, and an Ubicacion with that id exists, use it
+                    $e->ubicacion_id = $requestedUbicacion;
+                } else {
+                    // As a last resort, if it's a department (not marked es_bodega) and no Ubicacion exists, create the auto bodega
+                    if ($maybeDep) {
+                        if (! empty($maybeDep->bodega_ubicacion_id) && Ubicacion::find($maybeDep->bodega_ubicacion_id)) {
+                            $e->ubicacion_id = $maybeDep->bodega_ubicacion_id;
+                        } else {
+                            $created = Ubicacion::create([
+                                'nombre' => $maybeDep->nombre,
+                                'descripcion' => 'Funciona como bodega IT | AUTO_BODEGA_DEPARTAMENTO_'.$maybeDep->id
+                            ]);
+                            $maybeDep->bodega_ubicacion_id = $created->id;
+                            $maybeDep->save();
+                            $e->ubicacion_id = $created->id;
+                        }
+                    }
+                }
+            } catch (\Throwable $ex) {
+                // ignore
+            }
+        } else {
+            // Fallback: route to previous responsable's departamento bodega if available
+            try {
+                if (! empty($previousResponsable)) {
+                    $user = User::find($previousResponsable);
+                    if ($user && ! empty($user->departamento_id)) {
+                        $dep = Departamento::find($user->departamento_id);
+                        if ($dep && ! empty($dep->bodega_ubicacion_id)) {
+                            $e->ubicacion_id = $dep->bodega_ubicacion_id;
+                        }
+                    }
+                }
+            } catch (\Throwable $ex) {
+                // Ignore lookup errors and continue with current ubicacion
+            }
+        }
+
         $e->save();
+
+        Log::debug('EquipoController.recepcionar result', ['equipo_id'=>$e->id, 'old'=>$oldUbicacion, 'new'=>$e->ubicacion_id]);
 
         // Log movement: record that equipo fue recepcionado y responsable removido
         try {
             HistorialMovimiento::create([
                 'equipo_id' => $e->id,
-                'from_ubicacion_id' => $e->ubicacion_id,
+                'from_ubicacion_id' => $oldUbicacion,
                 'to_ubicacion_id' => $e->ubicacion_id,
                 'fecha' => now(),
                 'nota' => 'Recepcionado. Responsable anterior ID '.($previousResponsable ?? 'N/A'),
