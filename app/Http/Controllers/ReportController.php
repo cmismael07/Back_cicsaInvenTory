@@ -6,12 +6,15 @@ use Illuminate\Http\Request;
 use App\Http\Resources\HistorialMovimientoResource;
 use App\Http\Resources\MantenimientoResource;
 use App\Http\Resources\EquipoResource;
+use Illuminate\Support\Facades\Log;
 
 class ReportController extends Controller
 {
     public function dashboardStats()
     {
-        return response()->json(['equipos_total' => \App\Models\Equipo::count()]);
+        $count = \App\Models\Equipo::count();
+        Log::debug('ReportController.dashboardStats count', ['equipos_total' => $count]);
+        return response()->json(['equipos_total' => $count]);
     }
 
     public function warrantyReport()
@@ -47,20 +50,39 @@ class ReportController extends Controller
 
     public function movementHistory()
     {
-        return HistorialMovimientoResource::collection(\App\Models\HistorialMovimiento::with(['equipo','fromUbicacion','toUbicacion','responsable'])->get());
+        $rows = \App\Models\HistorialMovimiento::with(['equipo','fromUbicacion','toUbicacion','responsable'])->get();
+        Log::debug('ReportController.movementHistory count', ['count' => $rows->count(), 'sample_ids' => $rows->pluck('id')->take(10)]);
+        return HistorialMovimientoResource::collection($rows);
     }
 
     public function assignmentHistory()
     {
         $rows = \App\Models\HistorialMovimiento::with(['equipo','responsable','toUbicacion'])->where('nota','like','%Asignado%')->get();
+        Log::debug('ReportController.assignmentHistory count', ['count' => $rows->count(), 'sample_ids' => $rows->pluck('id')->take(10)]);
         $collection = $rows->map(function($r){
+            $fechaInicio = null;
+            if (!empty($r->fecha)) {
+                if (is_object($r->fecha) && method_exists($r->fecha, 'toDateTimeString')) {
+                    try {
+                        $fechaInicio = $r->fecha->toDateTimeString();
+                    } catch (\Throwable $e) {
+                        $fechaInicio = (string) $r->fecha;
+                    }
+                } else {
+                    try {
+                        $fechaInicio = \Carbon\Carbon::parse($r->fecha)->toDateTimeString();
+                    } catch (\Throwable $e) {
+                        $fechaInicio = (string) $r->fecha;
+                    }
+                }
+            }
             return [
                 'id' => $r->id,
                 'equipo_codigo' => $r->equipo?->codigo_activo,
                 'equipo_modelo' => $r->equipo?->modelo,
                 'usuario_nombre' => $r->responsable?->name,
                 'usuario_departamento' => $r->responsable?->departamento?->nombre,
-                'fecha_inicio' => $r->fecha?->toDateTimeString(),
+                'fecha_inicio' => $fechaInicio,
                 'fecha_fin' => null,
                 'ubicacion' => $r->toUbicacion?->nombre ?? $r->fromUbicacion?->nombre,
             ];

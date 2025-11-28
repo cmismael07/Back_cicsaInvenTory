@@ -320,14 +320,26 @@ class EquipoController extends Controller
         $e->estado = 'activo';
         $e->save();
 
-        $hist = HistorialMovimiento::create([
-            'equipo_id' => $e->id,
-            'from_ubicacion_id' => $e->ubicacion_id,
-            'to_ubicacion_id' => $e->ubicacion_id,
-            'fecha' => now(),
-            'nota' => 'Asignado a usuario ID '.$responsableId,
-            'responsable_id' => $responsableId,
-        ]);
+        $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? null;
+        if (empty($note)) {
+            $note = 'Asignado a usuario ID '.$responsableId;
+        }
+
+        try {
+            // Debug: log payload and note to diagnose missing observation cases
+            \Illuminate\Support\Facades\Log::debug('EquipoController.asignar creating historial', ['equipo_id' => $e->id, 'request' => $request->all(), 'nota_used' => $note]);
+            HistorialMovimiento::create([
+                'equipo_id' => $e->id,
+                'from_ubicacion_id' => $e->ubicacion_id,
+                'to_ubicacion_id' => $e->ubicacion_id,
+                'fecha' => now(),
+                'nota' => $note,
+                'responsable_id' => $responsableId,
+            ]);
+        } catch (\Throwable $ex) {
+            // don't break assignment if historial logging fails
+            \Illuminate\Support\Facades\Log::error('EquipoController.asignar historial create failed', ['error' => (string) $ex]);
+        }
 
         return new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable']));
     }
@@ -411,14 +423,18 @@ class EquipoController extends Controller
 
         Log::debug('EquipoController.recepcionar result', ['equipo_id'=>$e->id, 'old'=>$oldUbicacion, 'new'=>$e->ubicacion_id]);
 
-        // Log movement: record that equipo fue recepcionado y responsable removido
+        // Log movement: prefer storing the observation provided by frontend
         try {
+            $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? null;
+            if (empty($note)) {
+                $note = 'Recepcionado. Responsable anterior ID '.($previousResponsable ?? 'N/A');
+            }
             HistorialMovimiento::create([
                 'equipo_id' => $e->id,
                 'from_ubicacion_id' => $oldUbicacion,
                 'to_ubicacion_id' => $e->ubicacion_id,
                 'fecha' => now(),
-                'nota' => 'Recepcionado. Responsable anterior ID '.($previousResponsable ?? 'N/A'),
+                'nota' => $note,
                 'responsable_id' => $previousResponsable,
             ]);
         } catch (\Throwable $ex) {
@@ -428,11 +444,32 @@ class EquipoController extends Controller
         return new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable']));
     }
 
-    public function darBaja($id)
+    public function darBaja(Request $request, $id)
     {
         $e = Equipo::findOrFail($id);
+        $previousResponsable = $e->responsable_id;
+        $oldUbicacion = $e->ubicacion_id;
         $e->estado = 'baja';
         $e->save();
+
+        // Log the baja in historial, prefer frontend observation
+        try {
+            $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? null;
+            if (empty($note)) {
+                $note = 'Dado de baja. Responsable anterior ID '.($previousResponsable ?? 'N/A');
+            }
+            HistorialMovimiento::create([
+                'equipo_id' => $e->id,
+                'from_ubicacion_id' => $oldUbicacion,
+                'to_ubicacion_id' => null,
+                'fecha' => now(),
+                'nota' => $note,
+                'responsable_id' => $previousResponsable,
+            ]);
+        } catch (\Throwable $ex) {
+            // keep primary action successful even if historial logging fails
+        }
+
         return new EquipoResource($e);
     }
 
