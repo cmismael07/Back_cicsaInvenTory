@@ -19,7 +19,7 @@ class EquipoResource extends JsonResource
             'tipo_equipo_id' => $this->tipo_equipo_id,
             'tipo_nombre' => $this->tipo_equipo?->nombre,
             'fecha_compra' => $this->formatDate($this->fecha_compra),
-            'valor_compra' => $this->valor_compra ?? 0,
+            'valor_compra' => (float) ($this->valor_compra ?? 0),
             'anos_garantia' => isset($this->garantia_meses) ? (int) floor($this->garantia_meses / 12) : 0,
             'estado' => $this->mapEstado($this->estado),
             'ubicacion_id' => $this->ubicacion_id,

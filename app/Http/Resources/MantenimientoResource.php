@@ -16,7 +16,11 @@ class MantenimientoResource extends JsonResource
             'fecha' => $this->formatDate($this->fecha_inicio),
             'tipo_mantenimiento' => $this->tipo ?? 'Correctivo',
             'proveedor' => $this->proveedor ?? null,
-            'costo' => $this->costo ?? 0,
+            'costo' => (float) ($this->costo ?? 0),
+            // Total acumulado para el equipo (suma de todos los mantenimientos registrados)
+            'costo_total_acumulado' => $this->calculateTotalAcumulado(),
+            // Costo acumulado hasta esta entrada (incluye este registro). Útil para ver evolución.
+            'costo_acumulado_hasta_fecha' => $this->calculateAcumuladoHastaEstaFecha(),
             'descripcion' => $this->descripcion,
         ];
     }
@@ -28,5 +32,33 @@ class MantenimientoResource extends JsonResource
             return $value->toDateString();
         }
         return (string) $value;
+    }
+
+    private function calculateTotalAcumulado()
+    {
+        try {
+            return (float) (\App\Models\Mantenimiento::where('equipo_id', $this->equipo_id)->sum('costo') ?? 0);
+        } catch (\Throwable $e) {
+            return 0.0;
+        }
+    }
+
+    private function calculateAcumuladoHastaEstaFecha()
+    {
+        try {
+            if (empty($this->fecha_inicio)) {
+                // fallback to id ordering if no fecha
+                return (float) \App\Models\Mantenimiento::where('equipo_id', $this->equipo_id)
+                    ->where('id', '<=', $this->id)
+                    ->sum('costo');
+            }
+            return (float) \App\Models\Mantenimiento::where('equipo_id', $this->equipo_id)
+                ->where(function($q){
+                    $q->where('fecha_inicio', '<', $this->fecha_inicio)
+                      ->orWhere(function($q2){ $q2->where('fecha_inicio', '=', $this->fecha_inicio)->where('id', '<=', $this->id); });
+                })->sum('costo');
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 }

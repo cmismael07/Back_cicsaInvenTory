@@ -28,8 +28,18 @@ class ReportController extends Controller
                 continue;
             }
             $meses = intval($e->garantia_meses ?? 0);
-            $vencimiento = $compra->addMonths($meses);
-            $dias = now()->diffInDays($vencimiento, false);
+            // If no warranty or non-positive months, consider it expired (0 days remaining)
+            if ($meses <= 0) {
+                $vencimiento = $compra; // still provide a date (purchase date)
+                $dias = 0;
+            } else {
+                // Do not mutate original Carbon instance in case it's reused
+                $vencimiento = $compra->copy()->addMonths($meses);
+                // Calculate seconds difference and convert to days, rounding to nearest integer
+                $diffSeconds = $vencimiento->getTimestamp() - now()->getTimestamp();
+                $diasRounded = (int) round($diffSeconds / 86400);
+                $dias = $diasRounded > 0 ? $diasRounded : 0;
+            }
             $list[] = [
                 'equipo' => (new EquipoResource($e))->toArray(request()),
                 'dias_restantes' => $dias,
