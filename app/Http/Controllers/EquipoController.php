@@ -318,6 +318,38 @@ class EquipoController extends Controller
         $e->responsable_id = $responsableId;
         // Mark as assigned (activo) so frontend stops showing it as disponible
         $e->estado = 'activo';
+
+        // If frontend provided an ubicacion as part of the assignment, allow updating it.
+        // Accept shapes: ubicacion_id, ubicacion, ubicacionId, ubicacion_nombre
+        $req = $request->all();
+        $ubicacionCandidates = ['ubicacion_id','ubicacion','ubicacionId','ubicacionID','ubicacion_nombre','ubicacionNombre'];
+        $requestedUbicacion = $this->findIdInPayload($req, $ubicacionCandidates);
+
+        $ubicacionNombre = null;
+        if (empty($requestedUbicacion)) {
+            if (!empty($req['ubicacion_nombre'])) {
+                $ubicacionNombre = $req['ubicacion_nombre'];
+            } elseif (!empty($req['ubicacion']) && !is_numeric($req['ubicacion'])) {
+                $ubicacionNombre = $req['ubicacion'];
+            }
+        }
+
+        try {
+            if (!empty($requestedUbicacion) && is_numeric($requestedUbicacion) && Ubicacion::find($requestedUbicacion)) {
+                $e->ubicacion_id = (int) $requestedUbicacion;
+            } elseif (!empty($ubicacionNombre)) {
+                $found = Ubicacion::where('nombre', $ubicacionNombre)->first();
+                if ($found) {
+                    $e->ubicacion_id = $found->id;
+                } else {
+                    $created = Ubicacion::create(['nombre' => $ubicacionNombre, 'descripcion' => 'Creada desde asignar por frontend']);
+                    $e->ubicacion_id = $created->id;
+                }
+            }
+        } catch (\Throwable $ex) {
+            // ignore and continue
+        }
+
         $e->save();
 
         $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? null;
@@ -360,6 +392,16 @@ class EquipoController extends Controller
         $ubicacionCandidates = ['ubicacion_id','ubicacion','ubicacionId','ubicacionID','ubicacionid','to_ubicacion_id','toUbicacionId','to_ubicacion'];
         $requestedUbicacion = $this->findIdInPayload($request->all(), $ubicacionCandidates);
 
+        // Also accept a textual ubicacion name via 'ubicacion_nombre' or 'ubicacionNombre'
+        $ubicacionNombre = null;
+        if (empty($requestedUbicacion)) {
+            if ($request->filled('ubicacion_nombre')) {
+                $ubicacionNombre = $request->input('ubicacion_nombre');
+            } elseif ($request->filled('ubicacionNombre')) {
+                $ubicacionNombre = $request->input('ubicacionNombre');
+            }
+        }
+
         if (! empty($requestedUbicacion)) {
             // Normalize numeric strings
             if (is_string($requestedUbicacion) && ctype_digit($requestedUbicacion)) {
@@ -401,6 +443,21 @@ class EquipoController extends Controller
                 }
             } catch (\Throwable $ex) {
                 // ignore
+            }
+
+            // If frontend provided a ubicacion name rather than an id, resolve/create it now
+            if (empty($requestedUbicacion) && !empty($ubicacionNombre)) {
+                try {
+                    $found = Ubicacion::where('nombre', $ubicacionNombre)->first();
+                    if ($found) {
+                        $e->ubicacion_id = $found->id;
+                    } else {
+                        $created = Ubicacion::create(['nombre' => $ubicacionNombre, 'descripcion' => 'Creada desde recepcionar por frontend']);
+                        $e->ubicacion_id = $created->id;
+                    }
+                } catch (\Throwable $ex) {
+                    // ignore
+                }
             }
         } else {
             // Fallback: route to previous responsable's departamento bodega if available
@@ -471,6 +528,56 @@ class EquipoController extends Controller
         }
 
         return new EquipoResource($e);
+    }
+
+    public function marcarParaBaja(Request $request, $id)
+    {
+        $e = Equipo::findOrFail($id);
+        $previousResponsable = $e->responsable_id;
+        $oldUbicacion = $e->ubicacion_id;
+
+        // Accept ubicacion info to place the equipo when marking for baja
+        $req = $request->all();
+        $ubicacionCandidates = ['ubicacion_id','ubicacion','ubicacionId','ubicacion_nombre','ubicacionNombre'];
+        $requestedUbicacion = $this->findIdInPayload($req, $ubicacionCandidates);
+        $ubicacionNombre = null;
+        if (empty($requestedUbicacion)) {
+            if (!empty($req['ubicacion_nombre'])) $ubicacionNombre = $req['ubicacion_nombre'];
+            elseif (!empty($req['ubicacion']) && !is_numeric($req['ubicacion'])) $ubicacionNombre = $req['ubicacion'];
+        }
+        try {
+            if (!empty($requestedUbicacion) && is_numeric($requestedUbicacion) && Ubicacion::find($requestedUbicacion)) {
+                $e->ubicacion_id = (int) $requestedUbicacion;
+            } elseif (!empty($ubicacionNombre)) {
+                $found = Ubicacion::where('nombre', $ubicacionNombre)->first();
+                if ($found) $e->ubicacion_id = $found->id;
+                else {
+                    $created = Ubicacion::create(['nombre' => $ubicacionNombre, 'descripcion' => 'Creada desde marcarParaBaja por frontend']);
+                    $e->ubicacion_id = $created->id;
+                }
+            }
+        } catch (\Throwable $ex) {
+            // ignore
+        }
+
+        $e->estado = 'para_baja';
+        $e->save();
+
+        try {
+            $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? 'Marcado para baja';
+            HistorialMovimiento::create([
+                'equipo_id' => $e->id,
+                'from_ubicacion_id' => $oldUbicacion,
+                'to_ubicacion_id' => $e->ubicacion_id,
+                'fecha' => now(),
+                'nota' => $note,
+                'responsable_id' => $previousResponsable,
+            ]);
+        } catch (\Throwable $ex) {
+            // ignore
+        }
+
+        return new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable']));
     }
 
     public function enviarMantenimiento($id, Request $request)
@@ -558,5 +665,26 @@ class EquipoController extends Controller
         $e->save();
 
         return new MantenimientoResource($m->load('equipo'));
+    }
+
+    // Upload an evidence file for an assignment (historial movimiento)
+    public function subirArchivoAsignacion(Request $request, $id)
+    {
+        $hist = HistorialMovimiento::findOrFail($id);
+
+        if (! $request->hasFile('archivo')) {
+            return response()->json(['message' => 'Archivo no proporcionado'], 422);
+        }
+
+        try {
+            $file = $request->file('archivo');
+            $path = $file->store('asignaciones', 'public');
+            $hist->archivo = $path;
+            $hist->save();
+        } catch (\Throwable $ex) {
+            return response()->json(['message' => 'Error al subir archivo', 'error' => (string) $ex], 500);
+        }
+
+        return new HistorialMovimientoResource($hist->load(['responsable','equipo','fromUbicacion','toUbicacion']));
     }
 }

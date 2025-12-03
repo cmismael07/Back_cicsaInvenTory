@@ -27,7 +27,22 @@ class EquipoResource extends JsonResource
             'responsable_id' => $this->responsable_id,
             'responsable_nombre' => $this->responsable?->name,
             'observaciones' => $this->observaciones ?? '',
+            'ultimo_mantenimiento' => $this->getUltimoMantenimiento(),
         ];
+    }
+
+    private function getUltimoMantenimiento()
+    {
+        try {
+            $fecha = $this->mantenimientos()->whereNotNull('fecha_fin')->orderByDesc('fecha_fin')->value('fecha_fin');
+            if ($fecha) {
+                if (is_object($fecha) && method_exists($fecha, 'toDateString')) return $fecha->toDateString();
+                return (string) $fecha;
+            }
+        } catch (\Throwable $ex) {
+            // ignore and return null
+        }
+        return null;
     }
 
     private function formatDate($value)

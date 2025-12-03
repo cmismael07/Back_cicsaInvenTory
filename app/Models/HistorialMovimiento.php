@@ -11,7 +11,7 @@ class HistorialMovimiento extends Model
 
     protected $table = 'historial_movimientos';
 
-    protected $fillable = ['equipo_id', 'from_ubicacion_id', 'to_ubicacion_id', 'fecha', 'nota', 'responsable_id'];
+    protected $fillable = ['equipo_id', 'from_ubicacion_id', 'to_ubicacion_id', 'fecha', 'nota', 'responsable_id', 'archivo'];
 
     public function equipo()
     {

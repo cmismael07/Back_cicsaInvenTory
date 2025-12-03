@@ -37,6 +37,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/equipos/{id}/baja', [EquipoController::class, 'darBaja']);
     Route::post('/equipos/{id}/mantenimiento', [EquipoController::class, 'enviarMantenimiento']);
     Route::post('/equipos/{id}/finalizar-mantenimiento', [EquipoController::class, 'finalizarMantenimiento']);
+    Route::post('/asignaciones/{id}/archivo', [EquipoController::class, 'subirArchivoAsignacion']);
+    Route::post('/equipos/{id}/pre-baja', [EquipoController::class, 'marcarParaBaja']);
 
     // Licencias
     Route::apiResource('tipos-licencia', TipoLicenciaController::class);

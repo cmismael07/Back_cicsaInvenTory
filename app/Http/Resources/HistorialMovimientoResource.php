@@ -18,6 +18,7 @@ class HistorialMovimientoResource extends JsonResource
             'fecha' => $this->formatFecha($this->fecha),
             'usuario_responsable' => $this->responsable?->name,
             'detalle' => $this->nota,
+            'archivo' => $this->archivo ?? null,
         ];
     }
 
