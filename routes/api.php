@@ -11,6 +11,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\DepartamentoController;
 use App\Http\Controllers\PuestoController;
+use App\Http\Controllers\CatalogController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -56,4 +57,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/historial/asignaciones', [ReportController::class, 'assignmentHistory']);
     Route::get('/historial/mantenimientos', [ReportController::class, 'maintenanceHistory']);
     Route::get('/notificaciones', [NotificationController::class, 'index']);
+
+    // Catálogos auxiliares usados por frontend
+    Route::get('/ciudades', [CatalogController::class, 'ciudades']);
+    Route::post('/ciudades', [CatalogController::class, 'storeCiudad']);
+    Route::put('/ciudades/{id}', [CatalogController::class, 'updateCiudad']);
+    Route::delete('/ciudades/{id}', [CatalogController::class, 'deleteCiudad']);
+
+    Route::get('/paises', [CatalogController::class, 'paises']);
+    Route::post('/paises', [CatalogController::class, 'storePais']);
+    Route::put('/paises/{id}', [CatalogController::class, 'updatePais']);
+    Route::delete('/paises/{id}', [CatalogController::class, 'deletePais']);
 });

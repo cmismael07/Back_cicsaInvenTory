@@ -39,6 +39,15 @@ class DepartamentoController extends Controller
             $payload['es_bodega'] = $request->boolean('is_bodega');
         }
 
+        // City assignment (accept multiple key variants)
+        if ($request->filled('ciudad_id') || $request->has('ciudad_id')) {
+            $payload['ciudad_id'] = $request->input('ciudad_id');
+        } elseif ($request->filled('ciudadId') || $request->has('ciudadId')) {
+            $payload['ciudad_id'] = $request->input('ciudadId');
+        } elseif ($request->filled('city_id') || $request->has('city_id')) {
+            $payload['ciudad_id'] = $request->input('city_id');
+        }
+
         $d = Departamento::create($payload);
 
         // If this departamento is flagged as bodega, ensure an Ubicacion exists and store its id
@@ -90,6 +99,15 @@ class DepartamentoController extends Controller
             $payload['es_bodega'] = $request->boolean('esBodega');
         } elseif ($request->filled('is_bodega') || $request->has('is_bodega')) {
             $payload['es_bodega'] = $request->boolean('is_bodega');
+        }
+
+        // City assignment on update (accept multiple key variants)
+        if ($request->filled('ciudad_id') || $request->has('ciudad_id')) {
+            $payload['ciudad_id'] = $request->input('ciudad_id');
+        } elseif ($request->filled('ciudadId') || $request->has('ciudadId')) {
+            $payload['ciudad_id'] = $request->input('ciudadId');
+        } elseif ($request->filled('city_id') || $request->has('city_id')) {
+            $payload['ciudad_id'] = $request->input('city_id');
         }
 
         $wasBodega = (bool) $d->es_bodega;

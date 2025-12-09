@@ -11,7 +11,7 @@ class Departamento extends Model
 
     protected $table = 'departamentos';
 
-    protected $fillable = ['nombre', 'es_bodega', 'bodega_ubicacion_id'];
+    protected $fillable = ['nombre', 'es_bodega', 'bodega_ubicacion_id', 'ciudad_id'];
 
     protected $casts = [
         'es_bodega' => 'boolean',
