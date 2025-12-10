@@ -12,6 +12,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\DepartamentoController;
 use App\Http\Controllers\PuestoController;
 use App\Http\Controllers\CatalogController;
+use App\Http\Controllers\MigrationController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -68,4 +69,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/paises', [CatalogController::class, 'storePais']);
     Route::put('/paises/{id}', [CatalogController::class, 'updatePais']);
     Route::delete('/paises/{id}', [CatalogController::class, 'deletePais']);
+
+    // Bulk migration endpoints used by frontend migration module
+    Route::post('/migrations/equipos', [MigrationController::class, 'equipos']);
+    Route::post('/migrations/usuarios', [MigrationController::class, 'usuarios']);
+    Route::post('/migrations/licencias', [MigrationController::class, 'licencias']);
+    Route::post('/migrations/departamentos', [MigrationController::class, 'departamentos']);
+    Route::post('/migrations/puestos', [MigrationController::class, 'puestos']);
+    Route::post('/migrations/asignaciones', [MigrationController::class, 'asignaciones']);
 });

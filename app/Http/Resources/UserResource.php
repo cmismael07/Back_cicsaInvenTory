@@ -9,13 +9,26 @@ class UserResource extends JsonResource
     public function toArray($request): array
     {
         // Construimos la forma que espera el frontend
-        $fullName = $this->name ?? '';
-        $nombres = $fullName;
+        $fullName = trim($this->name ?? '');
+        $nombres = '';
         $apellidos = '';
-        if (is_string($fullName) && str_contains($fullName, ' ')) {
-            [$first, $rest] = explode(' ', $fullName, 2);
-            $nombres = $first;
-            $apellidos = $rest;
+        if ($fullName === '') {
+            $nombres = '';
+            $apellidos = '';
+        } else {
+            $parts = preg_split('/\s+/', $fullName);
+            $count = count($parts);
+            if ($count === 1) {
+                $nombres = $parts[0];
+                $apellidos = '';
+            } elseif ($count === 2) {
+                $nombres = $parts[0];
+                $apellidos = $parts[1];
+            } else {
+                // For 3+ parts, assume last two words are apellidos and the rest are nombres
+                $apellidos = $parts[$count - 2] . ' ' . $parts[$count - 1];
+                $nombres = implode(' ', array_slice($parts, 0, $count - 2));
+            }
         }
 
         // nombre_usuario viene del campo `username` si existe, sino intentamos derivarlo del email
