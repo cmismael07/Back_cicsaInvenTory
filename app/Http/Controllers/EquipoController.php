@@ -649,6 +649,21 @@ class EquipoController extends Controller
         if ($finalDesc !== null) {
             $m->descripcion = $finalDesc;
         }
+        // Handle optional uploaded file for signed maintenance order
+        if ($request->hasFile('archivo_orden') || $request->hasFile('archivo')) {
+            try {
+                $fileKey = $request->hasFile('archivo_orden') ? 'archivo_orden' : 'archivo';
+                $file = $request->file($fileKey);
+                $path = $file->store('mantenimientos', 'public');
+                // store path on model if column exists
+                if (\Illuminate\Support\Facades\Schema::hasColumn('mantenimientos', 'archivo_orden')) {
+                    $m->archivo_orden = $path;
+                }
+            } catch (\Throwable $e) {
+                // log and continue
+                \Illuminate\Support\Facades\Log::error('EquipoController::finalizarMantenimiento file save error: ' . $e->getMessage());
+            }
+        }
         $m->save();
 
         $e = $m->equipo;
