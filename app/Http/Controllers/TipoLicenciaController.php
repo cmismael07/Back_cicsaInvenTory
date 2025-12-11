@@ -34,14 +34,18 @@ class TipoLicenciaController extends Controller
         ]);
 
         $tipoLicencia = DB::transaction(function () use ($payload) {
-            $tipo = TipoLicencia::create($payload);
+            // Determine intended stock explicitly from payload to avoid relying on defaults
+            $cantidad = isset($payload['stock']) ? (int) $payload['stock'] : 0;
 
-            if (!empty($payload['stock']) && $payload['stock'] > 0) {
+            // Create the tipo and ensure stock field is set to the requested amount
+            $tipo = TipoLicencia::create(array_merge($payload, ['stock' => $cantidad]));
+
+            if ($cantidad > 0) {
                 $licenciasParaCrear = [];
-                for ($i = 0; $i < $tipo->stock; $i++) {
+                for ($i = 0; $i < $cantidad; $i++) {
                     $licenciasParaCrear[] = [
                         'tipo_licencia_id' => $tipo->id,
-                        'clave' => 'LIC-' . strtoupper(Str::random(10)) . '-' . uniqid(), // *** Generar clave única ***
+                        'clave' => 'LIC-' . strtoupper(Str::random(10)) . '-' . uniqid(),
                         'fecha_vencimiento' => $payload['fecha_vencimiento'] ?? null,
                         'created_at' => now(),
                         'updated_at' => now(),
@@ -58,11 +62,23 @@ class TipoLicenciaController extends Controller
             'licencias as disponibles' => fn($q) => $q->whereNull('user_id')
         ]);
 
-        return new TipoLicenciaResource($tipoLicencia);
+        // Build a plain JSON payload that includes the created resource fields
+        // (so frontends that expect `res.json().id` will work) and also
+        // return a Location header for convenience.
+        $resourceArray = (new TipoLicenciaResource($tipoLicencia))->toArray(request());
+        $location = url('/api/tipos-licencia/' . $tipoLicencia->id);
+
+        return response()->json(array_merge($resourceArray, ['location' => $location]), 201)
+            ->header('Location', $location);
     }
 
    public function addStock(Request $request, $id)
     {
+        // Defensive: validate id to avoid routes called with 'undefined'
+        if (!is_numeric($id) || intval($id) <= 0) {
+            return response()->json(['message' => 'Invalid TipoLicencia id provided'], 400);
+        }
+
         $payload = $request->validate([
             'cantidad' => 'required|integer|min:1',
             'fecha_vencimiento' => 'nullable|date',
@@ -140,6 +156,10 @@ class TipoLicenciaController extends Controller
 
     public function show($id)
     {
+        // Defensive: if id is not a positive integer, return 400 to avoid model NotFoundExceptions with 'undefined'
+        if (!is_numeric($id) || intval($id) <= 0) {
+            return response()->json(['message' => 'Invalid TipoLicencia id provided'], 400);
+        }
         return new TipoLicenciaResource(TipoLicencia::with('licencias')->findOrFail($id));
     }
 

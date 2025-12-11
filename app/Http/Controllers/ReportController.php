@@ -67,7 +67,13 @@ class ReportController extends Controller
 
     public function assignmentHistory()
     {
-        $rows = \App\Models\HistorialMovimiento::with(['equipo','responsable','toUbicacion'])->where('nota','like','%Asignado%')->get();
+        // Include common variants: case-insensitive 'asign' (covers Asignado/Asignación/etc.)
+        // Also include rows that have a responsable_id set (likely an assignment)
+        $rows = \App\Models\HistorialMovimiento::with(['equipo','responsable','toUbicacion'])
+            ->where(function($q){
+                $q->whereRaw('LOWER(nota) LIKE ?', ['%asign%'])
+                  ->orWhereNotNull('responsable_id');
+            })->get();
         Log::debug('ReportController.assignmentHistory count', ['count' => $rows->count(), 'sample_ids' => $rows->pluck('id')->take(10)]);
         $collection = $rows->map(function($r){
             $fechaInicio = null;
