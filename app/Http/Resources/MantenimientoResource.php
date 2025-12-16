@@ -22,7 +22,7 @@ class MantenimientoResource extends JsonResource
             // Costo acumulado hasta esta entrada (incluye este registro). Útil para ver evolución.
             'costo_acumulado_hasta_fecha' => $this->calculateAcumuladoHastaEstaFecha(),
             'descripcion' => $this->descripcion,
-            'archivo_orden' => $this->archivo_orden ? '/' . ltrim('storage/' . $this->archivo_orden, '/') : null,
+            'archivo_orden' => $this->archivo_orden ? url('api/files/mantenimientos/' . ltrim(basename($this->archivo_orden), '/')) : null,
         ];
     }
 

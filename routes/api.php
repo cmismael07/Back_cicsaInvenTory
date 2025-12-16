@@ -16,6 +16,10 @@ use App\Http\Controllers\MigrationController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
+// Public file proxy for assignment files (no auth required) to avoid CORS preflight issues
+Route::get('/files/asignaciones/{filename}', [\App\Http\Controllers\FileController::class, 'serveAsignacion']);
+// Public file proxy for maintenance files (no auth required)
+Route::get('/files/mantenimientos/{filename}', [\App\Http\Controllers\FileController::class, 'showMantenimiento']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
 // Rutas Protegidas
@@ -40,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/equipos/{id}/mantenimiento', [EquipoController::class, 'enviarMantenimiento']);
     Route::post('/equipos/{id}/finalizar-mantenimiento', [EquipoController::class, 'finalizarMantenimiento']);
     Route::post('/asignaciones/{id}/archivo', [EquipoController::class, 'subirArchivoAsignacion']);
+    // (Proxy route defined publicly above)
     Route::post('/equipos/{id}/pre-baja', [EquipoController::class, 'marcarParaBaja']);
 
     // Licencias

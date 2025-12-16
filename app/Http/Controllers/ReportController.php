@@ -101,6 +101,8 @@ class ReportController extends Controller
                 'fecha_inicio' => $fechaInicio,
                 'fecha_fin' => null,
                 'ubicacion' => $r->toUbicacion?->nombre ?? $r->fromUbicacion?->nombre,
+                // Prefer proxy endpoint to ensure CORS headers are present when frontend fetches blobs
+                'archivo' => $r->archivo ? url('api/files/asignaciones/' . ltrim(basename($r->archivo), '/')) : null,
             ];
         });
         return response()->json($collection->values());
@@ -108,6 +110,28 @@ class ReportController extends Controller
 
     public function maintenanceHistory()
     {
-        return MantenimientoResource::collection(\App\Models\Mantenimiento::with('equipo')->get());
+        $rows = \App\Models\Mantenimiento::with('equipo')->get();
+        $collection = $rows->map(function($m){
+            $fecha = null;
+            if (!empty($m->fecha)) {
+                try {
+                    $fecha = \Carbon\Carbon::parse($m->fecha)->toDateString();
+                } catch (\Throwable $e) {
+                    $fecha = (string) $m->fecha;
+                }
+            }
+            return [
+                'id' => $m->id,
+                'fecha' => $fecha,
+                'equipo_codigo' => $m->equipo?->codigo_activo,
+                'equipo_modelo' => $m->equipo?->modelo,
+                'tipo_mantenimiento' => $m->tipo ?? $m->tipo_mantenimiento ?? 'N/A',
+                'proveedor' => $m->proveedor,
+                'costo' => $m->costo,
+                'descripcion' => $m->descripcion,
+                'archivo_orden' => $m->archivo_orden ? url('api/files/mantenimientos/' . ltrim(basename($m->archivo_orden), '/')) : null,
+            ];
+        });
+        return response()->json($collection->values());
     }
 }
