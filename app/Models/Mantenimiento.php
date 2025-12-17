@@ -11,10 +11,15 @@ class Mantenimiento extends Model
 
     protected $table = 'mantenimientos';
 
-    protected $fillable = ['equipo_id', 'descripcion', 'fecha_inicio', 'fecha_fin', 'estado', 'costo', 'proveedor', 'tipo'];
+    protected $fillable = ['equipo_id', 'descripcion', 'fecha_inicio', 'fecha_fin', 'estado', 'costo', 'proveedor', 'tipo', 'plan_detail_id'];
 
     public function equipo()
     {
         return $this->belongsTo(Equipo::class);
+    }
+
+    public function planDetail()
+    {
+        return $this->belongsTo(\App\Models\DetallePlanMantenimiento::class, 'plan_detail_id');
     }
 }

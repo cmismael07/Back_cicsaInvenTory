@@ -13,6 +13,7 @@ use App\Http\Controllers\DepartamentoController;
 use App\Http\Controllers\PuestoController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\MigrationController;
+use App\Http\Controllers\PlanMantenimientoController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -62,6 +63,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/historial/movimientos', [ReportController::class, 'movementHistory']);
     Route::get('/historial/asignaciones', [ReportController::class, 'assignmentHistory']);
     Route::get('/historial/mantenimientos', [ReportController::class, 'maintenanceHistory']);
+    // Endpoints de planificación de mantenimiento (URLs en español)
+    Route::get('/planes-mantenimiento', [PlanMantenimientoController::class, 'index']);
+    Route::get('/planes-mantenimiento/{id}', [PlanMantenimientoController::class, 'show']);
+    Route::post('/planes-mantenimiento', [PlanMantenimientoController::class, 'store']);
+    Route::put('/detalles-planes-mantenimiento/{id}/mes', [PlanMantenimientoController::class, 'updateDetailMonth']);
+    Route::post('/detalles-planes-mantenimiento/{id}/iniciar', [PlanMantenimientoController::class, 'startFromPlan']);
+    Route::post('/ejecuciones-mantenimiento/{id}', [PlanMantenimientoController::class, 'registerExecution']);
+    Route::get('/ejecuciones-mantenimiento/{id}', [PlanMantenimientoController::class, 'getExecutions']);
     Route::get('/notificaciones', [NotificationController::class, 'index']);
 
     // Catálogos auxiliares usados por frontend

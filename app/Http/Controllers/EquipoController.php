@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Equipo;
 use App\Models\Mantenimiento;
+use App\Models\EjecucionMantenimiento;
+use App\Models\DetallePlanMantenimiento;
 use App\Models\HistorialMovimiento;
 use App\Models\Ubicacion;
 use App\Models\Departamento;
@@ -39,6 +41,31 @@ class EquipoController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Normaliza valores de estado variados (snake_case, lowercase, english)
+     * a las cadenas de despliegue usadas por el frontend (types.ts).
+     */
+    protected function normalizeEstadoValue($raw)
+    {
+        if ($raw === null) return null;
+        $s = trim((string)$raw);
+        $l = strtolower($s);
+
+        if (strpos($l, 'manten') !== false) return 'En Mantenimiento';
+        if (in_array($l, ['activo', 'activa', 'active', 'operativo', 'oper']) ) return 'Activo';
+        if (in_array($l, ['baja', 'dado_baja', 'dar_baja'])) return 'Baja';
+        if (in_array($l, ['disponible', 'dispon'])) return 'Disponible';
+        if (in_array($l, ['para_baja', 'para-baja', 'para baja', 'para_baja'])) return 'Para Baja';
+        if (in_array($l, ['recepcionado', 'recepcion', 'recepcionado'])) return 'Disponible';
+        // Plan statuses
+        if (in_array($l, ['en_proceso', 'en proceso', 'enproceso'])) return 'En Proceso';
+        if (in_array($l, ['realizado', 'realizado'])) return 'Realizado';
+        if (in_array($l, ['pendiente', 'pendiente'])) return 'Pendiente';
+
+        // Fallback: capitalize first letter
+        return ucfirst($s);
     }
     public function index()
     {
@@ -184,6 +211,15 @@ class EquipoController extends Controller
             'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
 
+        // Normalize estado when updating
+        if (isset($payload['estado'])) {
+            $payload['estado'] = $this->normalizeEstadoValue($payload['estado']);
+        }
+        // Normalize estado if provided
+        if (isset($payload['estado'])) {
+            $payload['estado'] = $this->normalizeEstadoValue($payload['estado']);
+        }
+
         $validator = \Illuminate\Support\Facades\Validator::make($payload, [
             'tipo_equipo_id' => 'required|integer|exists:tipo_equipos,id',
             'ubicacion_id' => 'nullable|integer|exists:ubicaciones,id',
@@ -316,8 +352,8 @@ class EquipoController extends Controller
         $validator->validate();
 
         $e->responsable_id = $responsableId;
-        // Mark as assigned (activo) so frontend stops showing it as disponible
-        $e->estado = 'activo';
+        // Mark as assigned (Activo) so frontend stops showing it as disponible
+        $e->estado = $this->normalizeEstadoValue('activo');
 
         // If frontend provided an ubicacion as part of the assignment, allow updating it.
         // Accept shapes: ubicacion_id, ubicacion, ubicacionId, ubicacion_nombre
@@ -381,7 +417,7 @@ class EquipoController extends Controller
         $e = Equipo::findOrFail($id);
         $previousResponsable = $e->responsable_id;
         $oldUbicacion = $e->ubicacion_id;
-        $e->estado = 'recepcionado';
+        $e->estado = $this->normalizeEstadoValue('recepcionado');
         // Clear responsable when recepcionar
         $e->responsable_id = null;
 
@@ -506,7 +542,7 @@ class EquipoController extends Controller
         $e = Equipo::findOrFail($id);
         $previousResponsable = $e->responsable_id;
         $oldUbicacion = $e->ubicacion_id;
-        $e->estado = 'baja';
+        $e->estado = $this->normalizeEstadoValue('baja');
         $e->save();
 
         // Log the baja in historial, prefer frontend observation
@@ -560,7 +596,7 @@ class EquipoController extends Controller
             // ignore
         }
 
-        $e->estado = 'para_baja';
+        $e->estado = $this->normalizeEstadoValue('para_baja');
         $e->save();
 
         try {
@@ -583,6 +619,10 @@ class EquipoController extends Controller
     public function enviarMantenimiento($id, Request $request)
     {
         $e = Equipo::findOrFail($id);
+        // Prevent sending if equipo already appears to be in maintenance (case-insensitive check)
+        if (!empty($e->estado) && stripos($e->estado, 'manten') !== false) {
+            return response()->json(['message' => 'El equipo ya se encuentra en mantenimiento'], 409);
+        }
         // Accept multiple possible keys for description (motivo, problema, fallo)
         $desc = $request->input('descripcion') ?? $request->input('motivo') ?? $request->input('problema') ?? $request->input('fallo') ?? null;
         $fechaInicio = $request->input('fecha_inicio') ?? $request->input('fecha') ?? now();
@@ -602,7 +642,7 @@ class EquipoController extends Controller
             $mData['proveedor'] = $proveedor;
         }
         $m = Mantenimiento::create($mData);
-        $e->estado = 'en_mantenimiento';
+        $e->estado = $this->normalizeEstadoValue('en_mantenimiento');
         $e->save();
         return new MantenimientoResource($m);
     }
@@ -665,15 +705,77 @@ class EquipoController extends Controller
             }
         }
         $m->save();
+        // After saving the mantenimiento, if it references a plan detail, ensure the detalle is marked Realizado.
+        try {
+            if (!empty($m->plan_detail_id)) {
+                $detalleFallback = DetallePlanMantenimiento::find($m->plan_detail_id);
+                if ($detalleFallback) {
+                    $detalleFallback->estado = 'Realizado';
+                    $detalleFallback->fecha_ejecucion = $m->fecha_fin ?? now()->toDateString();
+                    if ($request->filled('tecnico')) {
+                        $detalleFallback->tecnico_responsable = $request->input('tecnico');
+                    }
+                    $detalleFallback->save();
+                    logger()->info('finalizarMantenimiento: detalle actualizado desde plan_detail_id', ['mantenimiento_id' => $m->id, 'detail_id' => $detalleFallback->id, 'estado' => $detalleFallback->estado]);
+                }
+            }
+        } catch (\Throwable $ex) {
+            logger()->warning('finalizarMantenimiento: no se pudo actualizar detalle desde plan_detail_id', ['error' => $ex->getMessage()]);
+        }
 
+        // If the request includes a plan detail id, create an EjecucionMantenimiento and update the DetallePlan
+        $detailId = null;
+        foreach (['detail_id','detalle_id','plan_detail_id','planDetailId'] as $k) {
+            if ($request->filled($k)) { $detailId = $request->input($k); break; }
+        }
+
+        // If request didn't explicitly include a detail id, but the Mantenimiento was started
+        // from a plan and has `plan_detail_id`, prefer that so the plan detalle is updated.
+        if (!$detailId && isset($m) && !empty($m->plan_detail_id)) {
+            $detailId = $m->plan_detail_id;
+            logger()->info('finalizarMantenimiento: usando plan_detail_id desde mantenimiento', ['mantenimiento_id' => $m->id, 'plan_detail_id' => $detailId]);
+        }
+
+        if ($detailId) {
+            try {
+                $fechaExec = $request->input('fecha') ?? $m->fecha_fin ?? now()->toDateString();
+                $tecnicoExec = $request->input('tecnico') ?? $request->input('tecnico_responsable') ?? null;
+                $observ = $request->input('observaciones') ?? $request->input('descripcion') ?? null;
+                $archivoPath = null;
+                if ($request->hasFile('archivo')) {
+                    $file = $request->file('archivo');
+                    $archivoPath = $file->store('mantenimientos', 'public');
+                }
+
+                $exec = EjecucionMantenimiento::create([
+                    'detail_id' => $detailId,
+                    'fecha' => $fechaExec,
+                    'tecnico' => $tecnicoExec,
+                    'observaciones' => $observ,
+                    'archivo' => $archivoPath,
+                ]);
+
+                // Mark detalle as Realizado
+                $detalle = DetallePlanMantenimiento::find($detailId);
+                if ($detalle) {
+                    $detalle->estado = 'Realizado';
+                    $detalle->fecha_ejecucion = $fechaExec;
+                    if ($tecnicoExec) $detalle->tecnico_responsable = $tecnicoExec;
+                    $detalle->save();
+                }
+                logger()->info('Ejecucion creada via finalizarMantenimiento', ['exec_id' => $exec->id, 'detail_id' => $detailId]);
+            } catch (\Throwable $ex) {
+                logger()->warning('Error creando ejecucion en finalizarMantenimiento', ['error' => $ex->getMessage()]);
+            }
+        }
         $e = $m->equipo;
-        // Use requested nuevo_estado if provided, otherwise default to 'activo'
+        // Normalize nuevo_estado in finalizarMantenimiento flow (consistent states)
         $nuevo = $request->input('nuevo_estado', 'activo');
-        $normalized = $nuevo === 'DISPONIBLE' || strtolower($nuevo) === 'disponible' ? 'disponible' : strtolower($nuevo);
+        $normalized = $this->normalizeEstadoValue($nuevo);
 
-        // If the equipo currently has a responsable, prefer 'activo' so it remains assigned
+        // If the equipo currently has a responsable, prefer 'Activo' so it remains assigned
         if (! is_null($e->responsable_id)) {
-            $e->estado = 'activo';
+            $e->estado = $this->normalizeEstadoValue('activo');
         } else {
             $e->estado = $normalized;
         }
