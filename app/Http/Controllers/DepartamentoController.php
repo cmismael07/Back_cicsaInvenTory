@@ -58,6 +58,7 @@ class DepartamentoController extends Controller
                 $u = Ubicacion::create([
                     'nombre' => $d->nombre,
                     'descripcion' => "Funciona como bodega IT | {$marker}",
+                    'ciudad_id' => $d->ciudad_id ?? null,
                 ]);
                 $d->bodega_ubicacion_id = $u->id;
                 $d->save();
@@ -124,6 +125,7 @@ class DepartamentoController extends Controller
                 $u = Ubicacion::create([
                     'nombre' => $d->nombre,
                     'descripcion' => "Funciona como bodega IT | {$marker}",
+                    'ciudad_id' => $d->ciudad_id ?? null,
                 ]);
                 $d->bodega_ubicacion_id = $u->id;
                 $d->save();
@@ -139,6 +141,10 @@ class DepartamentoController extends Controller
         if ($wasBodega && $isBodegaNow) {
             Ubicacion::where('descripcion', 'like', "%{$marker}%")->get()->each(function ($u) use ($d) {
                 try { $u->nombre = $d->nombre; $u->save(); } catch (\Throwable $e) { /* ignore */ }
+            });
+            // also ensure ciudad_id kept in sync
+            Ubicacion::where('descripcion', 'like', "%{$marker}%")->get()->each(function ($u) use ($d) {
+                try { $u->ciudad_id = $d->ciudad_id ?? $u->ciudad_id; $u->save(); } catch (\Throwable $e) { /* ignore */ }
             });
             // also update stored reference name if present
             if (! empty($d->bodega_ubicacion_id)) {

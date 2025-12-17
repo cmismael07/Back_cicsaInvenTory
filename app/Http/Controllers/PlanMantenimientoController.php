@@ -172,6 +172,39 @@ class PlanMantenimientoController extends Controller
         return $execs;
     }
 
+    // Genera una propuesta de detalles de mantenimiento para una ciudad dada
+    public function generateProposal(Request $request)
+    {
+        $ciudadId = $request->input('ciudad_id') ?? $request->input('ciudadId') ?? $request->input('city_id');
+        if (empty($ciudadId)) {
+            return response()->json(['message' => 'ciudad_id es requerido'], 422);
+        }
+
+        logger()->info('PlanMantenimientoController@generateProposal called', ['ciudad_id' => $ciudadId]);
+
+        $equipos = Equipo::with(['tipo_equipo','ubicacion'])->whereHas('ubicacion', function ($q) use ($ciudadId) {
+            $q->where('ciudad_id', $ciudadId);
+        })->get();
+
+        $mesDefault = (int) ($request->input('mes') ?? 1);
+
+        $detalles = $equipos->map(function ($e) use ($mesDefault) {
+            return [
+                'equipo_id' => $e->id,
+                'equipo_codigo' => $e->codigo_activo ?? $e->serial ?? null,
+                'equipo_tipo' => $e->tipo_equipo->nombre ?? null,
+                'equipo_modelo' => $e->modelo,
+                'equipo_ubicacion' => $e->ubicacion->nombre ?? null,
+                'mes_programado' => $mesDefault,
+                'estado' => 'Pendiente',
+            ];
+        })->toArray();
+
+        logger()->debug('Proposal generated', ['ciudad_id' => $ciudadId, 'equipos' => $equipos->count()]);
+
+        return response()->json(['ciudad_id' => $ciudadId, 'count' => count($detalles), 'detalles' => $detalles]);
+    }
+
     public function startFromPlan(Request $request, $detailId)
     {
         logger()->info('PlanMantenimientoController@startFromPlan called', ['detailId' => $detailId, 'payload' => $request->all()]);

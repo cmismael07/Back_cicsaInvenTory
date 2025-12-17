@@ -268,11 +268,12 @@ class MigrationController extends Controller
                 if ($esBodega) {
                     $marker = "AUTO_BODEGA_DEPARTAMENTO_{$d->id}";
                     $exists = Ubicacion::where('descripcion', 'like', "%{$marker}%")->first();
-                    if (! $exists) {
+                        if (! $exists) {
                         try {
                             $u = Ubicacion::create([
                                 'nombre' => $d->nombre,
                                 'descripcion' => "Funciona como bodega IT | {$marker}",
+                                'ciudad_id' => $d->ciudad_id ?? null,
                             ]);
                             $d->bodega_ubicacion_id = $u->id;
                             $d->save();

@@ -11,7 +11,12 @@ class Ubicacion extends Model
 
     protected $table = 'ubicaciones';
 
-    protected $fillable = ['nombre','descripcion'];
+    protected $fillable = ['nombre','descripcion','ciudad_id'];
+
+    public function ciudad()
+    {
+        return $this->belongsTo('\App\\Models\\Ciudad', 'ciudad_id');
+    }
 
     public function equipos()
     {

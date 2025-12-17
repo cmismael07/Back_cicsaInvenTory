@@ -69,7 +69,20 @@ class EquipoController extends Controller
     }
     public function index()
     {
-        return EquipoResource::collection(Equipo::with(['tipo_equipo','ubicacion','responsable'])->get());
+        $req = request()->all();
+        $ciudadId = null;
+        foreach (['ciudad_id','ciudadId','city_id','cityId','sede_id','sedeId'] as $k) {
+            if (array_key_exists($k, $req) && ! empty($req[$k])) { $ciudadId = $req[$k]; break; }
+        }
+
+        $query = Equipo::with(['tipo_equipo','ubicacion','responsable']);
+        if ($ciudadId) {
+            $query = $query->whereHas('ubicacion', function ($q) use ($ciudadId) {
+                $q->where('ciudad_id', $ciudadId);
+            });
+        }
+
+        return EquipoResource::collection($query->get());
     }
 
     public function store(Request $request)

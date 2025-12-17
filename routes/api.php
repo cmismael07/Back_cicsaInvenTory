@@ -67,6 +67,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/planes-mantenimiento', [PlanMantenimientoController::class, 'index']);
     Route::get('/planes-mantenimiento/{id}', [PlanMantenimientoController::class, 'show']);
     Route::post('/planes-mantenimiento', [PlanMantenimientoController::class, 'store']);
+    Route::post('/planes-mantenimiento/propuesta', [PlanMantenimientoController::class, 'generateProposal']);
     Route::put('/detalles-planes-mantenimiento/{id}/mes', [PlanMantenimientoController::class, 'updateDetailMonth']);
     Route::post('/detalles-planes-mantenimiento/{id}/iniciar', [PlanMantenimientoController::class, 'startFromPlan']);
     Route::post('/ejecuciones-mantenimiento/{id}', [PlanMantenimientoController::class, 'registerExecution']);
