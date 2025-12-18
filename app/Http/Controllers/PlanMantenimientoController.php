@@ -10,6 +10,7 @@ use App\Models\Mantenimiento;
 use App\Models\Equipo;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class PlanMantenimientoController extends Controller
 {
@@ -59,7 +60,29 @@ class PlanMantenimientoController extends Controller
     public function store(Request $request)
     {
         logger()->info('PlanMantenimientoController@store called', ['request' => $request->all()]);
+        // Normalize incoming fecha_creacion (accept ISO8601 from frontend)
         $data = $request->only(['nombre','anio','creado_por','fecha_creacion','estado','ciudad_id','ciudad_nombre']);
+        if ($request->filled('fecha_creacion')) {
+            try {
+                $dt = Carbon::parse($request->input('fecha_creacion'));
+                $data['fecha_creacion'] = $dt->toDateTimeString();
+            } catch (\Throwable $e) {
+                logger()->warning('PlanMantenimientoController@store invalid fecha_creacion, clearing', ['raw' => $request->input('fecha_creacion')]);
+                $data['fecha_creacion'] = null;
+            }
+        }
+
+        // If creado_por not provided, prefer the authenticated user's display name
+        if (empty($data['creado_por'])) {
+            try {
+                $user = $request->user();
+                if ($user) {
+                    $data['creado_por'] = $user->name ?? $user->username ?? null;
+                }
+            } catch (\Throwable $e) {
+                // ignore if auth is not available
+            }
+        }
         $details = $request->input('details', []);
         $plan = PlanMantenimiento::create($data);
         foreach ($details as $d) {
@@ -239,6 +262,10 @@ class PlanMantenimientoController extends Controller
         }
 
         // set a consistent estado value used elsewhere (frontend expects 'En Mantenimiento')
+        // Persist the plan start reason onto the equipo.observaciones so frontend shows origen/problema
+        if (!empty($m->descripcion)) {
+            $equipo->observaciones = $m->descripcion;
+        }
         $equipo->estado = 'En Mantenimiento';
         $equipo->save();
         logger()->info('Equipo marcado en mantenimiento', ['equipo_id' => $equipo->id]);

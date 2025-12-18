@@ -655,6 +655,10 @@ class EquipoController extends Controller
             $mData['proveedor'] = $proveedor;
         }
         $m = Mantenimiento::create($mData);
+        // If the request provided a description for the problema/motivo, persist it on the equipo
+        if (!empty($desc)) {
+            $e->observaciones = $desc;
+        }
         $e->estado = $this->normalizeEstadoValue('en_mantenimiento');
         $e->save();
         return new MantenimientoResource($m);

@@ -19,4 +19,6 @@ class PlanMantenimiento extends Model
     {
         return $this->hasMany(DetallePlanMantenimiento::class, 'plan_id');
     }
+
+    
 }
