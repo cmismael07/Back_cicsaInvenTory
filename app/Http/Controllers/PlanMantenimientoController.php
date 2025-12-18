@@ -209,19 +209,40 @@ class PlanMantenimientoController extends Controller
             $q->where('ciudad_id', $ciudadId);
         })->get();
 
+        // Default start month (if client provides a preferred month)
         $mesDefault = (int) ($request->input('mes') ?? 1);
 
-        $detalles = $equipos->map(function ($e) use ($mesDefault) {
-            return [
-                'equipo_id' => $e->id,
-                'equipo_codigo' => $e->codigo_activo ?? $e->serial ?? null,
-                'equipo_tipo' => $e->tipo_equipo->nombre ?? null,
-                'equipo_modelo' => $e->modelo,
-                'equipo_ubicacion' => $e->ubicacion->nombre ?? null,
-                'mes_programado' => $mesDefault,
-                'estado' => 'Pendiente',
-            ];
-        })->toArray();
+        $detalles = [];
+        foreach ($equipos as $e) {
+            $freq = 1;
+            if (!empty($e->tipo_equipo) && isset($e->tipo_equipo->frecuencia_anual)) {
+                $freq = (int) $e->tipo_equipo->frecuencia_anual;
+            }
+            // Skip types explicitly excluded (0)
+            if ($freq <= 0) continue;
+
+            // Distribute months across the year: for i=0..freq-1 -> month = floor((i*12)/freq) + 1
+            for ($i = 0; $i < $freq; $i++) {
+                $month = (int) (floor(($i * 12) / $freq) + 1);
+                // If client provided a specific start month, rotate sequence so first month >= mesDefault
+                if ($mesDefault > 1) {
+                    // rotate by finding offset between mesDefault and first generated month
+                    $offset = ($mesDefault - $month + 12) % 12;
+                    $rotated = ($month + $offset - 1) % 12 + 1;
+                    $month = $rotated;
+                }
+
+                $detalles[] = [
+                    'equipo_id' => $e->id,
+                    'equipo_codigo' => $e->codigo_activo ?? $e->serial ?? null,
+                    'equipo_tipo' => $e->tipo_equipo->nombre ?? null,
+                    'equipo_modelo' => $e->modelo,
+                    'equipo_ubicacion' => $e->ubicacion->nombre ?? null,
+                    'mes_programado' => $month,
+                    'estado' => 'Pendiente',
+                ];
+            }
+        }
 
         logger()->debug('Proposal generated', ['ciudad_id' => $ciudadId, 'equipos' => $equipos->count()]);
 
