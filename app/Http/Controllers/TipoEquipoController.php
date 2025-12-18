@@ -15,7 +15,12 @@ class TipoEquipoController extends Controller
 
     public function store(Request $request)
     {
-        $t = TipoEquipo::create($request->only(['nombre','descripcion']));
+        $payload = $request->only(['nombre','descripcion','frecuencia_anual']);
+        // default to 1 if not provided
+        if (! isset($payload['frecuencia_anual']) || $payload['frecuencia_anual'] === null) {
+            $payload['frecuencia_anual'] = 1;
+        }
+        $t = TipoEquipo::create($payload);
         return new TipoEquipoResource($t);
     }
 
@@ -27,7 +32,8 @@ class TipoEquipoController extends Controller
     public function update(Request $request, $id)
     {
         $t = TipoEquipo::findOrFail($id);
-        $t->update($request->only(['nombre','descripcion']));
+        $payload = $request->only(['nombre','descripcion','frecuencia_anual']);
+        $t->update($payload);
         return new TipoEquipoResource($t);
     }
 
