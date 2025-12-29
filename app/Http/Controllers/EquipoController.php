@@ -529,22 +529,109 @@ class EquipoController extends Controller
 
         Log::debug('EquipoController.recepcionar result', ['equipo_id'=>$e->id, 'old'=>$oldUbicacion, 'new'=>$e->ubicacion_id]);
 
-        // Log movement: prefer storing the observation provided by frontend
+        // Debug: report if request included files / content-type to help frontend integration
         try {
+            Log::debug('EquipoController.recepcionar incoming request info', [
+                'has_archivo' => $request->hasFile('archivo'),
+                'has_evidenceFile' => $request->hasFile('evidenceFile'),
+                'content_type' => $request->header('Content-Type'),
+                'all_keys' => array_keys($request->all())
+            ]);
+
+            // Log raw files array size (non-sensitive)
+            $files = $request->allFiles();
+            Log::debug('EquipoController.recepcionar files count', ['count' => count($files), 'file_keys' => array_keys($files)]);
+
+            // Log movement: prefer storing the observation provided by frontend
             $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? null;
             if (empty($note)) {
                 $note = 'Recepcionado. Responsable anterior ID '.($previousResponsable ?? 'N/A');
             }
-            HistorialMovimiento::create([
+            $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? null;
+            if (empty($note)) {
+                $note = 'Recepcionado. Responsable anterior ID '.($previousResponsable ?? 'N/A');
+            }
+            $archivoPath = null;
+
+            // 1) Multipart field 'archivo' (preferred)
+            if ($request->hasFile('archivo')) {
+                try {
+                    $file = $request->file('archivo');
+                    $archivoPath = $file->store('recepciones', 'public');
+                } catch (\Throwable $ex) {
+                    \Illuminate\Support\Facades\Log::error('EquipoController.recepcionar file save failed (archivo)', ['error' => $ex->getMessage()]);
+                }
+            }
+
+            // 2) Multipart field 'evidenceFile' (frontend alternate name)
+            if (!$archivoPath && $request->hasFile('evidenceFile')) {
+                try {
+                    $file = $request->file('evidenceFile');
+                    $archivoPath = $file->store('recepciones', 'public');
+                } catch (\Throwable $ex) {
+                    \Illuminate\Support\Facades\Log::error('EquipoController.recepcionar file save failed (evidenceFile)', ['error' => $ex->getMessage()]);
+                }
+            }
+
+            // 3) Base64 payload (campo 'evidenceFileBase64' o 'evidenceFile' con data: URI)
+            if (!$archivoPath && ($request->filled('evidenceFileBase64') || $request->filled('evidenceFile'))) {
+                $b64 = $request->input('evidenceFileBase64') ?? $request->input('evidenceFile');
+                if (is_string($b64) && strpos($b64, 'data:') === 0) {
+                    try {
+                        // data:[<mediatype>][;base64],<data>
+                        [$meta, $data] = explode(',', $b64, 2) + [null, null];
+                        if ($data) {
+                            $decoded = base64_decode($data);
+                            $ext = 'bin';
+                            if (preg_match('/data:\/(\w+);/', $meta ?? '', $m)) $ext = $m[1];
+                            $filename = 'recepcion_' . time() . '.' . $ext;
+                            $path = 'recepciones/' . $filename;
+                            \Illuminate\Support\Facades\Storage::disk('public')->put($path, $decoded);
+                            $archivoPath = $path;
+                        }
+                    } catch (\Throwable $ex) {
+                        \Illuminate\Support\Facades\Log::error('EquipoController.recepcionar base64 save failed', ['error' => $ex->getMessage()]);
+                    }
+                }
+            }
+
+            $histData = [
                 'equipo_id' => $e->id,
                 'from_ubicacion_id' => $oldUbicacion,
                 'to_ubicacion_id' => $e->ubicacion_id,
                 'fecha' => now(),
                 'nota' => $note,
                 'responsable_id' => $previousResponsable,
-            ]);
+            ];
+
+            // Persist into either 'archivo' or 'archivos' column depending on schema
+            if ($archivoPath) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('historial_movimientos', 'archivo')) {
+                    $histData['archivo'] = $archivoPath;
+                } elseif (\Illuminate\Support\Facades\Schema::hasColumn('historial_movimientos', 'archivos')) {
+                    $histData['archivos'] = $archivoPath;
+                } else {
+                    // Column does not exist; still log where the file is stored
+                    \Illuminate\Support\Facades\Log::warning('EquipoController.recepcionar archivo saved but no column to persist', ['path' => $archivoPath]);
+                }
+            }
+
+            $hist = HistorialMovimiento::create($histData);
+            Log::debug('EquipoController.recepcionar historial created', ['hist_id' => $hist->id, 'archivo_saved' => $archivoPath ?? null]);
         } catch (\Throwable $ex) {
             // Don't break the flow if logging fails; keep primary action successful
+        }
+
+        // Return equipo and last historial entry (if created) to help frontend confirm upload
+        try {
+            if (isset($hist) && $hist instanceof \App\Models\HistorialMovimiento) {
+                return response()->json([
+                    'equipo' => new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable'])),
+                    'historial' => new HistorialMovimientoResource($hist)
+                ], 200);
+            }
+        } catch (\Throwable $__ex) {
+            // ignore and fallback to equipo only
         }
 
         return new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable']));
