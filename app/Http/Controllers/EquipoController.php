@@ -409,17 +409,85 @@ class EquipoController extends Controller
         try {
             // Debug: log payload and note to diagnose missing observation cases
             \Illuminate\Support\Facades\Log::debug('EquipoController.asignar creating historial', ['equipo_id' => $e->id, 'request' => $request->all(), 'nota_used' => $note]);
-            HistorialMovimiento::create([
+
+            $archivoPath = null;
+            // Prefer multipart 'archivo'
+            if ($request->hasFile('archivo')) {
+                try {
+                    $file = $request->file('archivo');
+                    $archivoPath = $file->store('asignaciones', 'public');
+                } catch (\Throwable $ex) {
+                    \Illuminate\Support\Facades\Log::error('EquipoController.asignar file save failed (archivo)', ['error' => $ex->getMessage()]);
+                }
+            }
+
+            // Alternate name from frontend
+            if (!$archivoPath && $request->hasFile('evidenceFile')) {
+                try {
+                    $file = $request->file('evidenceFile');
+                    $archivoPath = $file->store('asignaciones', 'public');
+                } catch (\Throwable $ex) {
+                    \Illuminate\Support\Facades\Log::error('EquipoController.asignar file save failed (evidenceFile)', ['error' => $ex->getMessage()]);
+                }
+            }
+
+            // Base64 payload
+            if (!$archivoPath && ($request->filled('evidenceFileBase64') || $request->filled('evidenceFile'))) {
+                $b64 = $request->input('evidenceFileBase64') ?? $request->input('evidenceFile');
+                if (is_string($b64) && strpos($b64, 'data:') === 0) {
+                    try {
+                        [$meta, $data] = explode(',', $b64, 2) + [null, null];
+                        if ($data) {
+                            $decoded = base64_decode($data);
+                            $ext = 'bin';
+                            if (preg_match('/data:\/(\w+);/', $meta ?? '', $m)) $ext = $m[1];
+                            $filename = 'asignacion_' . time() . '.' . $ext;
+                            $path = 'asignaciones/' . $filename;
+                            \Illuminate\Support\Facades\Storage::disk('public')->put($path, $decoded);
+                            $archivoPath = $path;
+                        }
+                    } catch (\Throwable $ex) {
+                        \Illuminate\Support\Facades\Log::error('EquipoController.asignar base64 save failed', ['error' => $ex->getMessage()]);
+                    }
+                }
+            }
+
+            $histData = [
                 'equipo_id' => $e->id,
                 'from_ubicacion_id' => $e->ubicacion_id,
                 'to_ubicacion_id' => $e->ubicacion_id,
                 'fecha' => now(),
                 'nota' => $note,
                 'responsable_id' => $responsableId,
-            ]);
+            ];
+
+            if ($archivoPath) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('historial_movimientos', 'archivo')) {
+                    $histData['archivo'] = $archivoPath;
+                } elseif (\Illuminate\Support\Facades\Schema::hasColumn('historial_movimientos', 'archivos')) {
+                    $histData['archivos'] = $archivoPath;
+                } else {
+                    \Illuminate\Support\Facades\Log::warning('EquipoController.asignar archivo saved but no column to persist', ['path' => $archivoPath]);
+                }
+            }
+
+            $hist = HistorialMovimiento::create($histData);
+            \Illuminate\Support\Facades\Log::debug('EquipoController.asignar historial created', ['hist_id' => $hist->id, 'archivo_saved' => $archivoPath ?? null]);
         } catch (\Throwable $ex) {
             // don't break assignment if historial logging fails
             \Illuminate\Support\Facades\Log::error('EquipoController.asignar historial create failed', ['error' => (string) $ex]);
+        }
+
+        // Return equipo and historial if available to help frontend
+        try {
+            if (isset($hist) && $hist instanceof \App\Models\HistorialMovimiento) {
+                return response()->json([
+                    'equipo' => new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable'])),
+                    'historial' => new HistorialMovimientoResource($hist)
+                ], 200);
+            }
+        } catch (\Throwable $__ex) {
+            // ignore and fallback
         }
 
         return new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable']));
