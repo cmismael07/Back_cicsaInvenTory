@@ -512,6 +512,7 @@ class EquipoController extends Controller
                 'to_ubicacion_id' => $e->ubicacion_id,
                 'fecha' => now(),
                 'nota' => $note,
+                'tipo_accion' => 'ASIGNACION',
                 'responsable_id' => $responsableId,
             ];
 
@@ -723,6 +724,7 @@ class EquipoController extends Controller
                 'to_ubicacion_id' => $e->ubicacion_id,
                 'fecha' => now(),
                 'nota' => $note,
+                'tipo_accion' => 'RECEPCION',
                 'responsable_id' => $previousResponsable,
             ];
 
@@ -767,22 +769,92 @@ class EquipoController extends Controller
         $e->estado = $this->normalizeEstadoValue('baja');
         $e->save();
 
-        // Log the baja in historial, prefer frontend observation
+        // Log the baja in historial, prefer frontend observation and accept an uploaded file
         try {
             $note = $request->input('observaciones') ?? $request->input('nota') ?? $request->input('detalle') ?? null;
             if (empty($note)) {
                 $note = 'Dado de baja. Responsable anterior ID '.($previousResponsable ?? 'N/A');
             }
-            HistorialMovimiento::create([
+
+            $archivoPath = null;
+
+            // Multipart field 'archivo' (preferred)
+            if ($request->hasFile('archivo')) {
+                try {
+                    $file = $request->file('archivo');
+                    $archivoPath = $file->store('bajas', 'public');
+                } catch (\Throwable $ex) {
+                    \Illuminate\Support\Facades\Log::error('EquipoController.darBaja file save failed (archivo)', ['error' => $ex->getMessage()]);
+                }
+            }
+
+            // Alternate name from frontend
+            if (!$archivoPath && $request->hasFile('evidenceFile')) {
+                try {
+                    $file = $request->file('evidenceFile');
+                    $archivoPath = $file->store('bajas', 'public');
+                } catch (\Throwable $ex) {
+                    \Illuminate\Support\Facades\Log::error('EquipoController.darBaja file save failed (evidenceFile)', ['error' => $ex->getMessage()]);
+                }
+            }
+
+            // Base64 payload
+            if (!$archivoPath && ($request->filled('evidenceFileBase64') || $request->filled('evidenceFile'))) {
+                $b64 = $request->input('evidenceFileBase64') ?? $request->input('evidenceFile');
+                if (is_string($b64) && strpos($b64, 'data:') === 0) {
+                    try {
+                        [$meta, $data] = explode(',', $b64, 2) + [null, null];
+                        if ($data) {
+                            $decoded = base64_decode($data);
+                            $ext = 'bin';
+                            if (preg_match('/data:\/(\w+);/', $meta ?? '', $m)) $ext = $m[1];
+                            $filename = 'baja_' . time() . '.' . $ext;
+                            $path = 'bajas/' . $filename;
+                            \Illuminate\Support\Facades\Storage::disk('public')->put($path, $decoded);
+                            $archivoPath = $path;
+                        }
+                    } catch (\Throwable $ex) {
+                        \Illuminate\Support\Facades\Log::error('EquipoController.darBaja base64 save failed', ['error' => $ex->getMessage()]);
+                    }
+                }
+            }
+
+            $histData = [
                 'equipo_id' => $e->id,
                 'from_ubicacion_id' => $oldUbicacion,
                 'to_ubicacion_id' => null,
                 'fecha' => now(),
                 'nota' => $note,
+                'tipo_accion' => 'BAJA',
                 'responsable_id' => $previousResponsable,
-            ]);
+            ];
+
+            if ($archivoPath) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('historial_movimientos', 'archivo')) {
+                    $histData['archivo'] = $archivoPath;
+                } elseif (\Illuminate\Support\Facades\Schema::hasColumn('historial_movimientos', 'archivos')) {
+                    $histData['archivos'] = $archivoPath;
+                } else {
+                    \Illuminate\Support\Facades\Log::warning('EquipoController.darBaja archivo saved but no column to persist', ['path' => $archivoPath]);
+                }
+            }
+
+            $hist = HistorialMovimiento::create($histData);
+            \Illuminate\Support\Facades\Log::debug('EquipoController.darBaja historial created', ['hist_id' => $hist->id, 'archivo_saved' => $archivoPath ?? null]);
         } catch (\Throwable $ex) {
             // keep primary action successful even if historial logging fails
+        }
+
+        // Return equipo and historial if available to help frontend
+        try {
+            if (isset($hist) && $hist instanceof \App\Models\HistorialMovimiento) {
+                return response()->json([
+                    'equipo' => new EquipoResource($e),
+                    'historial' => new HistorialMovimientoResource($hist)
+                ], 200);
+            }
+        } catch (\Throwable $__ex) {
+            // ignore
         }
 
         return new EquipoResource($e);
@@ -829,6 +901,7 @@ class EquipoController extends Controller
                 'to_ubicacion_id' => $e->ubicacion_id,
                 'fecha' => now(),
                 'nota' => $note,
+                'tipo_accion' => 'PRE_BAJA',
                 'responsable_id' => $previousResponsable,
             ]);
         } catch (\Throwable $ex) {
