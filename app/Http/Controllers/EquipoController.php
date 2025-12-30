@@ -296,6 +296,60 @@ class EquipoController extends Controller
             $input['garantia_meses'] = is_numeric($years) ? (int) ($years * 12) : $years;
         }
 
+        // --- Normalize/resolve ubicacion when frontend sends a departamento id or nombre ---
+        // If the provided ubicacion_id doesn't match an Ubicacion, try to map it from Departamento
+        try {
+            Log::debug('EquipoController.update incoming ubicacion fields', [
+                'raw_ubicacion_id' => $input['ubicacion_id'] ?? null,
+                'ubicacion_nombre' => $input['ubicacion_nombre'] ?? null,
+                'ubicacion' => $input['ubicacion'] ?? null,
+            ]);
+
+            if (! empty($input['ubicacion_id'])) {
+                $given = $input['ubicacion_id'];
+                // Prefer Departamento mapping when an id exists for both models (frontend often sends departamento id)
+                $maybeDep = Departamento::find($given);
+                if ($maybeDep) {
+                    Log::debug('EquipoController.update treating given id as Departamento', ['dep_id' => $maybeDep->id, 'es_bodega' => $maybeDep->es_bodega ?? null, 'bodega_ubicacion_id' => $maybeDep->bodega_ubicacion_id ?? null]);
+                    if (! empty($maybeDep->bodega_ubicacion_id) && \App\Models\Ubicacion::find($maybeDep->bodega_ubicacion_id)) {
+                        $input['ubicacion_id'] = $maybeDep->bodega_ubicacion_id;
+                        Log::debug('EquipoController.update mapped departamento -> bodega_ubicacion_id', ['mapped_to' => $input['ubicacion_id']]);
+                    } else {
+                        // create an auto bodega ubicacion for this departamento
+                        $created = \App\Models\Ubicacion::create([
+                            'nombre' => $maybeDep->nombre,
+                            'descripcion' => 'Funciona como bodega IT | AUTO_BODEGA_DEPARTAMENTO_'.$maybeDep->id
+                        ]);
+                        $maybeDep->bodega_ubicacion_id = $created->id;
+                        $maybeDep->save();
+                        $input['ubicacion_id'] = $created->id;
+                        Log::debug('EquipoController.update created auto Ubicacion for Departamento', ['new_ubicacion_id' => $created->id]);
+                    }
+                } elseif (\App\Models\Ubicacion::find($given)) {
+                    // If it's not a Departamento but exists as an Ubicacion, keep it
+                    Log::debug('EquipoController.update given ubicacion id exists as Ubicacion', ['given' => $given]);
+                } else {
+                    Log::debug('EquipoController.update given id did not match Ubicacion nor Departamento', ['given' => $given]);
+                }
+            }
+
+            if (empty($input['ubicacion_id']) && ! empty($input['ubicacion_nombre'])) {
+                Log::debug('EquipoController.update resolving by ubicacion_nombre', ['ubicacion_nombre' => $input['ubicacion_nombre']]);
+                $found = \App\Models\Ubicacion::where('nombre', $input['ubicacion_nombre'])->first();
+                if ($found) {
+                    $input['ubicacion_id'] = $found->id;
+                    Log::debug('EquipoController.update resolved ubicacion_nombre -> existing Ubicacion', ['mapped_to' => $found->id]);
+                } else {
+                    $created = \App\Models\Ubicacion::create(['nombre' => $input['ubicacion_nombre'], 'descripcion' => 'Creada desde update por frontend']);
+                    $input['ubicacion_id'] = $created->id;
+                    Log::debug('EquipoController.update created Ubicacion from nombre', ['new_ubicacion_id' => $created->id]);
+                }
+            }
+        } catch (\Throwable $__mapEx) {
+            // ignore and let validator catch invalid ids
+            \Illuminate\Support\Facades\Log::debug('EquipoController.update ubicacion resolve failed', ['error' => (string)$__mapEx, 'input_ubicacion' => $input['ubicacion_id'] ?? null]);
+        }
+
         $payload = \Illuminate\Support\Arr::only($input, [
             'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
