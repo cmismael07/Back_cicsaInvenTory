@@ -48,6 +48,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // (Proxy route defined publicly above)
     Route::post('/equipos/{id}/pre-baja', [EquipoController::class, 'marcarParaBaja']);
 
+    // Email settings
+    Route::get('/settings/email', [\App\Http\Controllers\EmailSettingsController::class, 'get']);
+    Route::post('/settings/email', [\App\Http\Controllers\EmailSettingsController::class, 'store']);
+    Route::post('/settings/email/test', [\App\Http\Controllers\EmailSettingsController::class, 'test']);
+
     // Licencias
     Route::apiResource('tipos-licencia', TipoLicenciaController::class);
     Route::apiResource('licencias', LicenciaController::class);

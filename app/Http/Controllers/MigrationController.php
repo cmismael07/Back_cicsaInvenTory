@@ -358,6 +358,7 @@ class MigrationController extends Controller
                     $hist = [
                         'equipo_id' => $equipo->id,
                         'nota' => 'Asignado por migración',
+                        'tipo_accion' => 'ASIGNACION',
                         'responsable_id' => $user->id ?? null,
                         'fecha' => isset($norm['fecha_asignacion']) && $norm['fecha_asignacion'] ? $this->parseExcelDate($norm['fecha_asignacion']) . ' 00:00:00' : now()->toDateTimeString(),
                         'created_at' => now(),
