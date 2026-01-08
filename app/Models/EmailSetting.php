@@ -15,10 +15,11 @@ class EmailSetting extends Model
         'correos_copia' => 'array',
         'notificar_asignacion' => 'boolean',
         'notificar_mantenimiento' => 'boolean',
+        'notificar_alerta_mantenimiento' => 'boolean',
     ];
 
     protected $fillable = [
-        'remitente', 'correos_copia', 'notificar_asignacion', 'notificar_mantenimiento', 'dias_anticipacion_alerta',
+        'remitente', 'correos_copia', 'notificar_asignacion', 'notificar_mantenimiento', 'notificar_alerta_mantenimiento', 'dias_anticipacion_alerta',
         'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_encryption'
     ];
 }
