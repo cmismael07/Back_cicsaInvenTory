@@ -10,14 +10,62 @@ use App\Models\HistorialMovimiento;
 use App\Models\Ubicacion;
 use App\Models\Departamento;
 use App\Models\User;
+use App\Models\EmailSetting;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use App\Http\Resources\EquipoResource;
 use App\Http\Resources\MantenimientoResource;
 use App\Http\Resources\HistorialMovimientoResource;
+use App\Services\DynamicEmailService;
 
 class EquipoController extends Controller
 {
+    protected function sendMaintenanceNotificationIfEnabled(Equipo $equipo, ?Mantenimiento $mantenimiento, ?string $detalle = null): void
+    {
+        try {
+            $settings = EmailSetting::first();
+            if (! $settings || ! ($settings->notificar_mantenimiento ?? false)) {
+                return;
+            }
+
+            if (empty($equipo->responsable_id)) {
+                // Sin usuario asignado, no hay a quién notificar (evita correos “perdidos”)
+                return;
+            }
+
+            $user = User::find($equipo->responsable_id);
+            $to = $user?->email;
+            if (empty($to)) {
+                return;
+            }
+
+            $cc = is_array($settings->correos_copia) ? $settings->correos_copia : [];
+            $codigo = $equipo->codigo_activo ?? ('Equipo #' . $equipo->id);
+            $subject = "Mantenimiento finalizado - {$codigo}";
+
+            $lines = [];
+            $lines[] = "Se registró la finalización del mantenimiento.";
+            $lines[] = "Equipo: {$codigo}";
+            if (!empty($equipo->modelo)) $lines[] = "Modelo: {$equipo->modelo}";
+            if ($mantenimiento) {
+                if (!empty($mantenimiento->proveedor)) $lines[] = "Proveedor: {$mantenimiento->proveedor}";
+                if (isset($mantenimiento->costo)) $lines[] = "Costo: {$mantenimiento->costo}";
+                if (!empty($mantenimiento->tipo)) $lines[] = "Tipo: {$mantenimiento->tipo}";
+            }
+            if (!empty($detalle)) {
+                $lines[] = "";
+                $lines[] = "Detalle:";
+                $lines[] = $detalle;
+            }
+            $body = implode("\n", $lines);
+
+            app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc);
+        } catch (\Throwable $e) {
+            // Best-effort: no romper el flujo principal
+            Log::warning('sendMaintenanceNotificationIfEnabled failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     /**
      * Buscar recursivamente posibles claves de id dentro de un array/request
      * Retorna el primer valor encontrado o null.
@@ -1004,6 +1052,14 @@ class EquipoController extends Controller
             }
         }
         $m->save();
+
+        // Notificación por correo (si está habilitada)
+        try {
+            $detalleCorreo = $request->input('descripcion') ?? $request->input('detalle') ?? $request->input('descripcion_final') ?? null;
+            $this->sendMaintenanceNotificationIfEnabled($m->equipo, $m, is_string($detalleCorreo) ? $detalleCorreo : null);
+        } catch (\Throwable $e) {
+            // ignore
+        }
         // After saving the mantenimiento, if it references a plan detail, ensure the detalle is marked Realizado.
         try {
             if (!empty($m->plan_detail_id)) {

@@ -8,12 +8,56 @@ use App\Models\DetallePlanMantenimiento;
 use App\Models\EjecucionMantenimiento;
 use App\Models\Mantenimiento;
 use App\Models\Equipo;
+use App\Models\EmailSetting;
+use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use App\Services\DynamicEmailService;
 
 class PlanMantenimientoController extends Controller
 {
+    protected function sendMaintenanceExecutionNotificationIfEnabled(DetallePlanMantenimiento $detail, ?EjecucionMantenimiento $exec = null): void
+    {
+        try {
+            $settings = EmailSetting::first();
+            if (! $settings || ! ($settings->notificar_mantenimiento ?? false)) {
+                return;
+            }
+
+            if (empty($detail->equipo_id)) return;
+            $equipo = Equipo::find($detail->equipo_id);
+            if (! $equipo || empty($equipo->responsable_id)) return;
+
+            $user = User::find($equipo->responsable_id);
+            $to = $user?->email;
+            if (empty($to)) return;
+
+            $cc = is_array($settings->correos_copia) ? $settings->correos_copia : [];
+            $codigo = $equipo->codigo_activo ?? ('Equipo #' . $equipo->id);
+            $subject = "Mantenimiento registrado - {$codigo}";
+
+            $lines = [];
+            $lines[] = 'Se registró una ejecución de mantenimiento en el plan anual.';
+            $lines[] = "Equipo: {$codigo}";
+            if (!empty($detail->mes_programado)) $lines[] = 'Mes programado: ' . $detail->mes_programado;
+            if ($exec) {
+                if (!empty($exec->fecha)) $lines[] = 'Fecha ejecución: ' . $exec->fecha;
+                if (!empty($exec->tecnico)) $lines[] = 'Técnico: ' . $exec->tecnico;
+                if (!empty($exec->observaciones)) {
+                    $lines[] = '';
+                    $lines[] = 'Observaciones:';
+                    $lines[] = $exec->observaciones;
+                }
+            }
+            $body = implode("\n", $lines);
+
+            app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc);
+        } catch (\Throwable $e) {
+            Log::warning('sendMaintenanceExecutionNotificationIfEnabled failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     protected function normalizePlanEstado($raw)
     {
         if ($raw === null) return null;
@@ -143,6 +187,9 @@ class PlanMantenimientoController extends Controller
             logger()->error('Error creando ejecucion: ' . $e->getMessage(), ['detail_id' => $detail->id, 'exception' => $e]);
             return response()->json(['message' => 'Error al crear ejecucion', 'error' => $e->getMessage()], 500);
         }
+
+        // Notificación por correo (si está habilitada)
+        $this->sendMaintenanceExecutionNotificationIfEnabled($detail, $exec ?? null);
 
         // Mark the plan detail as completed and update equipo status
         // Use frontend-friendly display values from types.ts

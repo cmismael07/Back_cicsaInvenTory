@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use App\Models\EmailSetting;
 use App\Mail\GenericNotification;
 
@@ -168,9 +169,39 @@ class EmailSettingsController extends Controller
         config(['mail.mailers.dynamic' => $mailerConfig]);
 
         try {
-            Mail::mailer('dynamic')->to($to)->send(new GenericNotification('Prueba de correo', 'Este es un correo de prueba desde la configuración dinámica.'));
+            Log::info('EmailSettingsController@test attempting send', [
+                'to' => $to,
+                'mailer' => 'dynamic',
+                'smtp' => [
+                    'host' => $row->smtp_host,
+                    'port' => $row->smtp_port ?: 587,
+                    'encryption' => $row->smtp_encryption ?: null,
+                    'username' => $row->smtp_username,
+                    'password_set' => !empty($password),
+                ],
+            ]);
+
+            // Envío síncrono (sin queue) para diagnóstico
+            $subject = 'Prueba de correo';
+            $body = 'Este es un correo de prueba desde la configuración dinámica.';
+            $fromAddress = $row->smtp_username ?: null;
+            $fromName = $row->remitente ?: null;
+
+            Mail::mailer('dynamic')->raw($body, function ($message) use ($to, $subject, $fromAddress, $fromName) {
+                $message->to($to)->subject($subject);
+                if ($fromAddress) {
+                    $message->from($fromAddress, $fromName ?: null);
+                }
+            });
+
+            Log::info('EmailSettingsController@test send OK', ['to' => $to]);
             return response()->json(['ok' => true], 200);
         } catch (\Throwable $e) {
+            Log::error('EmailSettingsController@test send FAILED', [
+                'to' => $to,
+                'error' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
         }
     }
