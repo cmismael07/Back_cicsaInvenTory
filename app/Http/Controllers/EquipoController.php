@@ -269,7 +269,9 @@ class EquipoController extends Controller
         Log::debug('EquipoController.store resolved ubicacion', ['ubicacion_resolved' => $input['ubicacion_id'] ?? null]);
 
         $payload = \Illuminate\Support\Arr::only($input, [
-            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
+            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador',
+            'procesador', 'ram', 'disco_capacidad', 'disco_tipo', 'sistema_operativo', 'plan_recambio_id',
+            'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
 
         // Normalize estado when updating
@@ -290,6 +292,12 @@ class EquipoController extends Controller
             'modelo' => 'nullable|string',
             'serial' => 'nullable|string',
             'serie_cargador' => 'nullable|string',
+            'procesador' => 'nullable|string',
+            'ram' => 'nullable|string',
+            'disco_capacidad' => 'nullable|string',
+            'disco_tipo' => 'nullable|string',
+            'sistema_operativo' => 'nullable|string',
+            'plan_recambio_id' => 'nullable|integer',
             'estado' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'garantia_meses' => 'nullable|integer',
@@ -399,7 +407,9 @@ class EquipoController extends Controller
         }
 
         $payload = \Illuminate\Support\Arr::only($input, [
-            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador', 'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
+            'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador',
+            'procesador', 'ram', 'disco_capacidad', 'disco_tipo', 'sistema_operativo', 'plan_recambio_id',
+            'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
 
         $validator = \Illuminate\Support\Facades\Validator::make($payload, [
@@ -411,6 +421,12 @@ class EquipoController extends Controller
             'modelo' => 'nullable|string',
             'serial' => 'nullable|string',
             'serie_cargador' => 'nullable|string',
+            'procesador' => 'nullable|string',
+            'ram' => 'nullable|string',
+            'disco_capacidad' => 'nullable|string',
+            'disco_tipo' => 'nullable|string',
+            'sistema_operativo' => 'nullable|string',
+            'plan_recambio_id' => 'nullable|integer',
             'estado' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'garantia_meses' => 'nullable|integer',
@@ -1124,6 +1140,20 @@ class EquipoController extends Controller
             }
         }
         $e = $m->equipo;
+        // Actualizar especificaciones técnicas si vienen en el request
+        $specs = [
+            'serie_cargador',
+            'procesador',
+            'ram',
+            'disco_capacidad',
+            'disco_tipo',
+            'sistema_operativo',
+        ];
+        foreach ($specs as $key) {
+            if ($request->filled($key)) {
+                $e->{$key} = $request->input($key);
+            }
+        }
         // Normalize nuevo_estado in finalizarMantenimiento flow (consistent states)
         $nuevo = $request->input('nuevo_estado', 'activo');
         $normalized = $this->normalizeEstadoValue($nuevo);

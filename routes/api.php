@@ -14,6 +14,8 @@ use App\Http\Controllers\PuestoController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\MigrationController;
 use App\Http\Controllers\PlanMantenimientoController;
+use App\Http\Controllers\PlanRecambioController;
+use App\Http\Controllers\BovedaController;
 
 // Auth
 Route::post('/login', [AuthController::class, 'login']);
@@ -65,6 +67,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/stats/dashboard', [ReportController::class, 'dashboardStats']);
     Route::get('/stats/garantias', [ReportController::class, 'warrantyReport']);
     Route::get('/stats/reemplazos', [ReportController::class, 'replacementCandidates']);
+    Route::post('/stats/verify-alerts', [ReportController::class, 'verifyMaintenanceAlerts']);
     Route::get('/historial/movimientos', [ReportController::class, 'movementHistory']);
     Route::get('/historial/asignaciones', [ReportController::class, 'assignmentHistory']);
     Route::get('/historial/mantenimientos', [ReportController::class, 'maintenanceHistory']);
@@ -77,7 +80,27 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/detalles-planes-mantenimiento/{id}/iniciar', [PlanMantenimientoController::class, 'startFromPlan']);
     Route::post('/ejecuciones-mantenimiento/{id}', [PlanMantenimientoController::class, 'registerExecution']);
     Route::get('/ejecuciones-mantenimiento/{id}', [PlanMantenimientoController::class, 'getExecutions']);
+    Route::get('/evidencias-mantenimiento/{id}', [PlanMantenimientoController::class, 'getEvidence']);
     Route::get('/notificaciones', [NotificationController::class, 'index']);
+
+    // Bóveda de credenciales
+    Route::get('/boveda', [BovedaController::class, 'index']);
+    Route::post('/boveda', [BovedaController::class, 'store']);
+    Route::put('/boveda/{id}', [BovedaController::class, 'update']);
+    Route::delete('/boveda/{id}', [BovedaController::class, 'destroy']);
+
+    // Planes de recambio
+    Route::get('/recambio/planes', [PlanRecambioController::class, 'index']);
+    Route::get('/recambio/planes/{id}', [PlanRecambioController::class, 'show']);
+    Route::post('/recambio/planes', [PlanRecambioController::class, 'save']);
+    // Endpoint esperado por frontend
+    Route::get('/planes-recambio', [PlanRecambioController::class, 'index']);
+    Route::get('/planes-recambio/{id}', [PlanRecambioController::class, 'show']);
+    Route::post('/planes-recambio', [PlanRecambioController::class, 'save']);
+    // Alias opcional por compatibilidad
+    Route::get('/replacement-plans', [PlanRecambioController::class, 'index']);
+    Route::get('/replacement-plans/{id}', [PlanRecambioController::class, 'show']);
+    Route::post('/replacement-plans', [PlanRecambioController::class, 'save']);
 
     // Catálogos auxiliares usados por frontend
     Route::get('/ciudades', [CatalogController::class, 'ciudades']);

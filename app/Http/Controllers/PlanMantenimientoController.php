@@ -242,6 +242,24 @@ class PlanMantenimientoController extends Controller
         return $execs;
     }
 
+    public function getEvidence($detailId)
+    {
+        logger()->info('PlanMantenimientoController@getEvidence called', ['detailId' => $detailId]);
+        $execs = EjecucionMantenimiento::where('detail_id', $detailId)->get();
+        $payload = $execs->map(function ($e) {
+            return [
+                'id' => $e->id,
+                'detalle_id' => $e->detail_id,
+                'fecha' => $e->fecha,
+                'tecnico' => $e->tecnico,
+                'observaciones' => $e->observaciones,
+                'archivo' => $e->archivo ? url('api/files/mantenimientos/' . ltrim(basename($e->archivo), '/')) : null,
+            ];
+        });
+        logger()->debug('Evidencias encontradas', ['detailId' => $detailId, 'count' => $payload->count()]);
+        return response()->json($payload->values());
+    }
+
     // Genera una propuesta de detalles de mantenimiento para una ciudad dada
     public function generateProposal(Request $request)
     {

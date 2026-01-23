@@ -51,11 +51,31 @@ class ReportController extends Controller
 
     public function replacementCandidates()
     {
-        // Simple rule: equipos con garantia 0 or older than 5 years
-        $candidates = \App\Models\Equipo::where(function($q){
-            $q->whereNull('garantia_meses')->orWhere('garantia_meses', 0);
-        })->orWhereRaw("TIMESTAMPDIFF(YEAR, fecha_compra, CURDATE()) >= 5")->get();
-        return EquipoResource::collection($candidates);
+        $candidates = \App\Models\Equipo::with('tipo_equipo')
+            ->whereNull('plan_recambio_id')
+            ->where(function ($q) {
+                $q->whereNull('estado')->orWhereRaw('LOWER(estado) NOT LIKE ?', ['%baja%']);
+            })
+            ->get()
+            ->filter(function ($e) {
+                $typeName = strtolower((string) ($e->tipo_equipo?->nombre ?? ''));
+                $renovTypes = ['desktop', 'laptop', 'workstation', 'portatil', 'notebook', 'servidor'];
+                $isComputing = false;
+                foreach ($renovTypes as $t) {
+                    if (str_contains($typeName, $t)) { $isComputing = true; break; }
+                }
+                if (! $isComputing) return false;
+
+                if (empty($e->fecha_compra)) return false;
+                try {
+                    $age = \Carbon\Carbon::parse($e->fecha_compra)->diffInYears(now());
+                } catch (\Throwable $ex) {
+                    return false;
+                }
+                return $age >= 4;
+            });
+
+        return EquipoResource::collection($candidates->values());
     }
 
     public function movementHistory()
@@ -133,5 +153,13 @@ class ReportController extends Controller
             ];
         });
         return response()->json($collection->values());
+    }
+
+    public function verifyMaintenanceAlerts()
+    {
+        // Endpoint utilizado por el frontend para forzar verificación de alertas
+        // Por ahora es best-effort: solo registra y responde OK.
+        Log::info('ReportController.verifyMaintenanceAlerts called');
+        return response()->json(['ok' => true]);
     }
 }
