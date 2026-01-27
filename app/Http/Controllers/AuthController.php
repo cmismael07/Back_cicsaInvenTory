@@ -42,18 +42,32 @@ class AuthController extends Controller
 
     public function changePassword(Request $request)
     {
-        $request->validate([
-            'current_password' => 'required',
-            'new_password' => 'required|min:6|confirmed',
-        ]);
-
+        // Support multiple frontend payloads: either
+        // { current_password, new_password, new_password_confirmation }
+        // or { old, new, confirm }
         $user = $request->user();
 
-        if (! Hash::check($request->current_password, $user->password)) {
+        $current = $request->input('current_password') ?? $request->input('old');
+        $new = $request->input('new_password') ?? $request->input('new');
+        $confirm = $request->input('new_password_confirmation') ?? $request->input('confirm');
+
+        if (! $current || ! $new || ! $confirm) {
+            return response()->json(['message' => 'Se requieren campos current_password/old y new/confirm'], 422);
+        }
+
+        if (strlen($new) < 6) {
+            return response()->json(['message' => 'La nueva contraseña debe tener al menos 6 caracteres'], 422);
+        }
+
+        if ($new !== $confirm) {
+            return response()->json(['message' => 'La confirmación de la nueva contraseña no coincide'], 422);
+        }
+
+        if (! Hash::check($current, $user->password)) {
             return response()->json(['message' => 'Contraseña actual incorrecta'], 422);
         }
 
-        $user->password = Hash::make($request->new_password);
+        $user->password = Hash::make($new);
         $user->save();
 
         return response()->json(['message' => 'Contraseña actualizada']);
