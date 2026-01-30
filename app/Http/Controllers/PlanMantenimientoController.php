@@ -20,18 +20,35 @@ class PlanMantenimientoController extends Controller
     protected function sendMaintenanceExecutionNotificationIfEnabled(DetallePlanMantenimiento $detail, ?EjecucionMantenimiento $exec = null): void
     {
         try {
+            Log::info('sendMaintenanceExecutionNotificationIfEnabled called', ['detail_id' => $detail->id ?? null, 'equipo_id' => $detail->equipo_id ?? null]);
             $settings = EmailSetting::first();
-            if (! $settings || ! ($settings->notificar_mantenimiento ?? false)) {
+            if (! $settings) {
+                Log::info('sendMaintenanceExecutionNotificationIfEnabled: no EmailSetting row found, skipping', ['detail_id' => $detail->id ?? null]);
+                return;
+            }
+            if (! ($settings->notificar_mantenimiento ?? false)) {
+                Log::info('sendMaintenanceExecutionNotificationIfEnabled: notificar_mantenimiento disabled', ['detail_id' => $detail->id ?? null]);
                 return;
             }
 
             if (empty($detail->equipo_id)) return;
             $equipo = Equipo::find($detail->equipo_id);
-            if (! $equipo || empty($equipo->responsable_id)) return;
+            if (! $equipo) {
+                Log::info('sendMaintenanceExecutionNotificationIfEnabled: equipo not found', ['detail_id' => $detail->id ?? null]);
+                return;
+            }
+            if (empty($equipo->responsable_id)) {
+                Log::info('sendMaintenanceExecutionNotificationIfEnabled: equipo has no responsable', ['equipo_id' => $equipo->id]);
+                return;
+            }
 
             $user = User::find($equipo->responsable_id);
-            $to = $user?->email;
-            if (empty($to)) return;
+            Log::info('sendMaintenanceExecutionNotificationIfEnabled: responsable lookup', ['equipo_id' => $equipo->id, 'responsable_id' => $equipo->responsable_id, 'user_found' => $user ? true : false]);
+            $to = $user?->email ?? $user?->correo ?? null;
+            if (empty($to)) {
+                Log::info('sendMaintenanceExecutionNotificationIfEnabled: destinatario vacío (sin email)', ['equipo_id' => $equipo->id, 'responsable_id' => $equipo->responsable_id]);
+                return;
+            }
 
             $cc = is_array($settings->correos_copia) ? $settings->correos_copia : [];
             $codigo = $equipo->codigo_activo ?? ('Equipo #' . $equipo->id);
@@ -47,12 +64,26 @@ class PlanMantenimientoController extends Controller
                 if (!empty($exec->observaciones)) {
                     $lines[] = '';
                     $lines[] = 'Observaciones:';
-                    $lines[] = $exec->observaciones;
-                }
-            }
-            $body = implode("\n", $lines);
 
-            app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc);
+                        $cc = is_array($settings->correos_copia) ? $settings->correos_copia : [];
+                        $to = null;
+                        if (! empty($equipo->responsable_id)) {
+                            $user = User::find($equipo->responsable_id);
+                            Log::info('sendMaintenanceExecutionNotificationIfEnabled: responsable lookup', ['equipo_id' => $equipo->id ?? null, 'responsable_id' => $equipo->responsable_id, 'user_found' => $user ? true : false]);
+                            $to = $user?->email ?? $user?->correo ?? null;
+                        }
+
+                        if (empty($to)) {
+                            if (!empty($cc)) {
+                                Log::info('sendMaintenanceExecutionNotificationIfEnabled: sin responsable con email, usando correos_copia como destino', ['equipo_id' => $equipo->id ?? null, 'cc_count' => count($cc)]);
+                                $to = array_shift($cc);
+                            } else {
+                                Log::info('sendMaintenanceExecutionNotificationIfEnabled: sin responsable ni correos_copia, no hay destinatario', ['equipo_id' => $equipo->id ?? null]);
+                                return;
+                            }
+                        }
+            $sent = app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc);
+            Log::info('sendMaintenanceExecutionNotificationIfEnabled: sendRaw result', ['detail_id' => $detail->id ?? null, 'to' => $to, 'sent' => $sent]);
         } catch (\Throwable $e) {
             Log::warning('sendMaintenanceExecutionNotificationIfEnabled failed', ['error' => $e->getMessage()]);
         }

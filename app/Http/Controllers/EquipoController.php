@@ -23,23 +23,38 @@ class EquipoController extends Controller
     protected function sendMaintenanceNotificationIfEnabled(Equipo $equipo, ?Mantenimiento $mantenimiento, ?string $detalle = null): void
     {
         try {
+            Log::info('sendMaintenanceNotificationIfEnabled called', ['equipo_id' => $equipo->id ?? null, 'mantenimiento_id' => $mantenimiento->id ?? null]);
             $settings = EmailSetting::first();
-            if (! $settings || ! ($settings->notificar_mantenimiento ?? false)) {
+            if (! $settings) {
+                Log::info('sendMaintenanceNotificationIfEnabled: no EmailSetting row found, skipping', ['equipo_id' => $equipo->id ?? null]);
                 return;
             }
-
-            if (empty($equipo->responsable_id)) {
-                // Sin usuario asignado, no hay a quién notificar (evita correos “perdidos”)
-                return;
-            }
-
-            $user = User::find($equipo->responsable_id);
-            $to = $user?->email;
-            if (empty($to)) {
+            if (! ($settings->notificar_mantenimiento ?? false)) {
+                Log::info('sendMaintenanceNotificationIfEnabled: notificar_mantenimiento disabled', ['equipo_id' => $equipo->id ?? null]);
                 return;
             }
 
             $cc = is_array($settings->correos_copia) ? $settings->correos_copia : [];
+
+            $to = null;
+            if (! empty($equipo->responsable_id)) {
+                $user = User::find($equipo->responsable_id);
+                Log::info('sendMaintenanceNotificationIfEnabled: responsable lookup', ['equipo_id' => $equipo->id ?? null, 'responsable_id' => $equipo->responsable_id, 'user_found' => $user ? true : false]);
+                $to = $user?->email ?? $user?->correo ?? null;
+            }
+
+            // Fallback: si no hay responsable o el responsable no tiene email,
+            // enviar al primer correo de `correos_copia` y colocar el resto en cc.
+            if (empty($to)) {
+                if (!empty($cc)) {
+                    Log::info('sendMaintenanceNotificationIfEnabled: sin responsable con email, usando correos_copia como destino', ['equipo_id' => $equipo->id ?? null, 'cc_count' => count($cc)]);
+                    $to = array_shift($cc);
+                } else {
+                    Log::info('sendMaintenanceNotificationIfEnabled: sin responsable ni correos_copia, no hay destinatario', ['equipo_id' => $equipo->id ?? null]);
+                    return;
+                }
+            }
+
             $codigo = $equipo->codigo_activo ?? ('Equipo #' . $equipo->id);
             $subject = "Mantenimiento finalizado - {$codigo}";
 
@@ -59,10 +74,84 @@ class EquipoController extends Controller
             }
             $body = implode("\n", $lines);
 
-            app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc);
+            // Collect possible attachments from historial (archivo / archivos)
+            $attachments = [];
+            if ($hist) {
+                if (!empty($hist->archivo)) {
+                    $attachments[] = $hist->archivo;
+                } elseif (!empty($hist->archivos)) {
+                    // could be JSON or comma-separated; normalize to array
+                    if (is_array($hist->archivos)) {
+                        $attachments = array_merge($attachments, $hist->archivos);
+                    } elseif (is_string($hist->archivos)) {
+                        $decoded = json_decode($hist->archivos, true);
+                        if (is_array($decoded)) $attachments = array_merge($attachments, $decoded);
+                        else $attachments = array_merge($attachments, array_map('trim', explode(',', $hist->archivos)));
+                    }
+                }
+            }
+
+            $sent = app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc, $attachments);
+            Log::info('sendMaintenanceNotificationIfEnabled: sendRaw result', ['equipo_id' => $equipo->id ?? null, 'to' => $to, 'cc_count' => count($cc), 'sent' => $sent]);
         } catch (\Throwable $e) {
             // Best-effort: no romper el flujo principal
             Log::warning('sendMaintenanceNotificationIfEnabled failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    protected function sendAssignNotificationIfEnabled(Equipo $equipo, ?HistorialMovimiento $hist = null): void
+    {
+        try {
+            Log::info('sendAssignNotificationIfEnabled called', ['equipo_id' => $equipo->id ?? null, 'hist_id' => $hist->id ?? null]);
+            $settings = EmailSetting::first();
+            if (! $settings) {
+                Log::info('sendAssignNotificationIfEnabled: no EmailSetting row found, skipping', ['equipo_id' => $equipo->id ?? null]);
+                return;
+            }
+            if (! ($settings->notificar_asignacion ?? false)) {
+                Log::info('sendAssignNotificationIfEnabled: notificar_asignacion disabled', ['equipo_id' => $equipo->id ?? null]);
+                return;
+            }
+
+            $cc = is_array($settings->correos_copia) ? $settings->correos_copia : [];
+
+            $to = null;
+            $assignedName = null;
+            if (! empty($equipo->responsable_id)) {
+                $user = User::find($equipo->responsable_id);
+                Log::info('sendAssignNotificationIfEnabled: responsable lookup', ['equipo_id' => $equipo->id ?? null, 'responsable_id' => $equipo->responsable_id, 'user_found' => $user ? true : false]);
+                $to = $user?->email ?? $user?->correo ?? null;
+                $assignedName = $user?->name ?? $user?->nombre ?? null;
+            }
+
+            if (empty($to)) {
+                if (! empty($cc)) {
+                    Log::info('sendAssignNotificationIfEnabled: sin responsable con email, usando correos_copia como destino', ['equipo_id' => $equipo->id ?? null, 'cc_count' => count($cc)]);
+                    $to = array_shift($cc);
+                } else {
+                    Log::info('sendAssignNotificationIfEnabled: sin responsable ni correos_copia, no hay destinatario', ['equipo_id' => $equipo->id ?? null]);
+                    return;
+                }
+            }
+
+            $codigo = $equipo->codigo_activo ?? ('Equipo #' . $equipo->id);
+            $subject = "Asignación de equipo - {$codigo}";
+
+            $lines = [];
+            $lines[] = "Se ha asignado el equipo: {$codigo}";
+            if (! empty($assignedName)) $lines[] = "Asignado a: {$assignedName}";
+            if (! empty($to)) $lines[] = "Correo destino: {$to}";
+            if ($hist && ! empty($hist->nota)) {
+                $lines[] = "";
+                $lines[] = "Observaciones:";
+                $lines[] = $hist->nota;
+            }
+            $body = implode("\n", $lines);
+
+            $sent = app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc);
+            Log::info('sendAssignNotificationIfEnabled: sendRaw result', ['equipo_id' => $equipo->id ?? null, 'to' => $to, 'cc_count' => count($cc), 'sent' => $sent]);
+        } catch (\Throwable $e) {
+            Log::warning('sendAssignNotificationIfEnabled failed', ['error' => $e->getMessage()]);
         }
     }
 
@@ -592,6 +681,12 @@ class EquipoController extends Controller
 
             $hist = HistorialMovimiento::create($histData);
             \Illuminate\Support\Facades\Log::debug('EquipoController.asignar historial created', ['hist_id' => $hist->id, 'archivo_saved' => $archivoPath ?? null]);
+            // Intentar notificar por correo la asignación (no bloquear el flujo)
+            try {
+                $this->sendAssignNotificationIfEnabled($e, $hist);
+            } catch (\Throwable $ex) {
+                \Illuminate\Support\Facades\Log::warning('EquipoController.asignar sendAssignNotificationIfEnabled failed', ['error' => (string) $ex]);
+            }
         } catch (\Throwable $ex) {
             // don't break assignment if historial logging fails
             \Illuminate\Support\Facades\Log::error('EquipoController.asignar historial create failed', ['error' => (string) $ex]);
