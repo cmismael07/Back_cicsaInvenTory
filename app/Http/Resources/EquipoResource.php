@@ -27,6 +27,8 @@ class EquipoResource extends JsonResource
             'disco_tipo' => $this->disco_tipo ?? null,
             'sistema_operativo' => $this->sistema_operativo ?? null,
             'plan_recambio_id' => $this->plan_recambio_id ?? null,
+            'pi_compra' => $this->pi_compra ?? null,
+            'pi_recambio' => $this->pi_recambio ?? null,
             'estado' => $this->mapEstado($this->estado),
             'ubicacion_id' => $this->ubicacion_id,
             'ubicacion_nombre' => $this->ubicacion?->nombre,

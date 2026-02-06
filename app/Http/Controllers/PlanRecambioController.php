@@ -27,7 +27,7 @@ class PlanRecambioController extends Controller
     public function save(Request $request)
     {
         $planData = $request->input('plan', $request->only([
-            'anio','nombre','creado_por','fecha_creacion','presupuesto_estimado','total_equipos','estado'
+            'id','anio','nombre','creado_por','fecha_creacion','presupuesto_estimado','total_equipos','estado','pi_recambio'
         ]));
         $details = $request->input('details', []);
 
@@ -38,7 +38,7 @@ class PlanRecambioController extends Controller
         $result = null;
         DB::beginTransaction();
         try {
-            $plan = PlanRecambio::create([
+            $payload = [
                 'anio' => $planData['anio'],
                 'nombre' => $planData['nombre'],
                 'creado_por' => $planData['creado_por'] ?? null,
@@ -46,7 +46,39 @@ class PlanRecambioController extends Controller
                 'presupuesto_estimado' => $planData['presupuesto_estimado'] ?? 0,
                 'total_equipos' => $planData['total_equipos'] ?? count($details),
                 'estado' => $planData['estado'] ?? 'ACTIVO',
-            ]);
+                'pi_recambio' => $planData['pi_recambio'] ?? null,
+            ];
+
+            $plan = null;
+            if (!empty($planData['id']) && PlanRecambio::where('id', $planData['id'])->exists()) {
+                $plan = PlanRecambio::find($planData['id']);
+                $plan->update($payload);
+
+                // Track existing equipos to release removed ones
+                $oldEquipos = DetallePlanRecambio::where('plan_id', $plan->id)
+                    ->pluck('equipo_id')
+                    ->filter()
+                    ->values();
+
+                // Replace previous details for this plan
+                DetallePlanRecambio::where('plan_id', $plan->id)->delete();
+
+                // Determine equipos that were removed from the plan
+                $newEquipos = collect($details)
+                    ->map(fn ($d) => $d['equipo_id'] ?? null)
+                    ->filter()
+                    ->values();
+
+                $removedEquipos = $oldEquipos->diff($newEquipos)->values();
+                if ($removedEquipos->count() > 0) {
+                    Equipo::whereIn('id', $removedEquipos)->update([
+                        'plan_recambio_id' => null,
+                        'pi_recambio' => null,
+                    ]);
+                }
+            } else {
+                $plan = PlanRecambio::create($payload);
+            }
 
             foreach ($details as $d) {
                 $detalle = DetallePlanRecambio::create([
@@ -60,7 +92,11 @@ class PlanRecambioController extends Controller
                 ]);
 
                 if (!empty($detalle->equipo_id)) {
-                    Equipo::where('id', $detalle->equipo_id)->update(['plan_recambio_id' => $plan->id]);
+                    $updates = ['plan_recambio_id' => $plan->id];
+                    if (!empty($payload['pi_recambio']) && ($payload['estado'] ?? '') === 'ACTIVO') {
+                        $updates['pi_recambio'] = $payload['pi_recambio'];
+                    }
+                    Equipo::where('id', $detalle->equipo_id)->update($updates);
                 }
             }
 
@@ -73,5 +109,69 @@ class PlanRecambioController extends Controller
         }
 
         return response()->json(['ok' => true, 'plan' => $result], 201);
+    }
+
+    public function destroy($id)
+    {
+        DB::beginTransaction();
+        try {
+            $plan = PlanRecambio::findOrFail($id);
+            $detailEquipos = DetallePlanRecambio::where('plan_id', $plan->id)->pluck('equipo_id')->filter()->values();
+
+            DetallePlanRecambio::where('plan_id', $plan->id)->delete();
+            $plan->delete();
+
+            if ($detailEquipos->count() > 0) {
+                Equipo::whereIn('id', $detailEquipos)->update([
+                    'plan_recambio_id' => null,
+                    'pi_recambio' => null,
+                ]);
+            }
+
+            DB::commit();
+            return response()->json(['ok' => true]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('PlanRecambio delete failed', ['error' => $e->getMessage(), 'plan_id' => $id]);
+            return response()->json(['message' => 'No se pudo eliminar el plan', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function approve(Request $request, $id)
+    {
+        $piRecambio = strtoupper(trim((string) $request->input('pi_recambio', '')));
+        if ($piRecambio === '') {
+            return response()->json(['message' => 'pi_recambio es requerido'], 422);
+        }
+
+        $nombre = $request->input('nombre');
+
+        DB::beginTransaction();
+        try {
+            $plan = PlanRecambio::findOrFail($id);
+            $updatePayload = [
+                'estado' => 'ACTIVO',
+                'pi_recambio' => $piRecambio,
+            ];
+            if (!empty($nombre)) {
+                $updatePayload['nombre'] = $nombre;
+            }
+            $plan->update($updatePayload);
+
+            $detailEquipos = DetallePlanRecambio::where('plan_id', $plan->id)->pluck('equipo_id')->filter()->values();
+            if ($detailEquipos->count() > 0) {
+                Equipo::whereIn('id', $detailEquipos)->update([
+                    'plan_recambio_id' => $plan->id,
+                    'pi_recambio' => $piRecambio,
+                ]);
+            }
+
+            DB::commit();
+            return response()->json(['ok' => true, 'plan' => $plan]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('PlanRecambio approve failed', ['error' => $e->getMessage(), 'plan_id' => $id]);
+            return response()->json(['message' => 'No se pudo aprobar el plan', 'error' => $e->getMessage()], 500);
+        }
     }
 }

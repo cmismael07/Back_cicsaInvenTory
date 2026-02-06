@@ -360,6 +360,7 @@ class EquipoController extends Controller
         $payload = \Illuminate\Support\Arr::only($input, [
             'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador',
             'procesador', 'ram', 'disco_capacidad', 'disco_tipo', 'sistema_operativo', 'plan_recambio_id',
+            'pi_compra', 'pi_recambio',
             'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
 
@@ -387,6 +388,8 @@ class EquipoController extends Controller
             'disco_tipo' => 'nullable|string',
             'sistema_operativo' => 'nullable|string',
             'plan_recambio_id' => 'nullable|integer',
+            'pi_compra' => 'nullable|string',
+            'pi_recambio' => 'nullable|string',
             'estado' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'garantia_meses' => 'nullable|integer',
@@ -498,6 +501,7 @@ class EquipoController extends Controller
         $payload = \Illuminate\Support\Arr::only($input, [
             'tipo_equipo_id', 'ubicacion_id', 'responsable_id', 'codigo_activo', 'marca', 'modelo', 'serial', 'serie_cargador',
             'procesador', 'ram', 'disco_capacidad', 'disco_tipo', 'sistema_operativo', 'plan_recambio_id',
+            'pi_compra', 'pi_recambio',
             'estado', 'fecha_compra', 'garantia_meses', 'valor_compra', 'observaciones'
         ]);
 
@@ -516,6 +520,8 @@ class EquipoController extends Controller
             'disco_tipo' => 'nullable|string',
             'sistema_operativo' => 'nullable|string',
             'plan_recambio_id' => 'nullable|integer',
+            'pi_compra' => 'nullable|string',
+            'pi_recambio' => 'nullable|string',
             'estado' => 'nullable|string',
             'fecha_compra' => 'nullable|date',
             'garantia_meses' => 'nullable|integer',

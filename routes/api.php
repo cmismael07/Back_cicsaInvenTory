@@ -97,10 +97,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/planes-recambio', [PlanRecambioController::class, 'index']);
     Route::get('/planes-recambio/{id}', [PlanRecambioController::class, 'show']);
     Route::post('/planes-recambio', [PlanRecambioController::class, 'save']);
+    Route::delete('/planes-recambio/{id}', [PlanRecambioController::class, 'destroy']);
+    Route::post('/planes-recambio/{id}/aprobar', [PlanRecambioController::class, 'approve']);
     // Alias opcional por compatibilidad
     Route::get('/replacement-plans', [PlanRecambioController::class, 'index']);
     Route::get('/replacement-plans/{id}', [PlanRecambioController::class, 'show']);
     Route::post('/replacement-plans', [PlanRecambioController::class, 'save']);
+    Route::delete('/replacement-plans/{id}', [PlanRecambioController::class, 'destroy']);
+    Route::post('/replacement-plans/{id}/approve', [PlanRecambioController::class, 'approve']);
 
     // Catálogos auxiliares usados por frontend
     Route::get('/ciudades', [CatalogController::class, 'ciudades']);

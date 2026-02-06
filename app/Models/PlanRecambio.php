@@ -19,6 +19,7 @@ class PlanRecambio extends Model
         'presupuesto_estimado',
         'total_equipos',
         'estado',
+        'pi_recambio',
     ];
 
     protected $casts = [

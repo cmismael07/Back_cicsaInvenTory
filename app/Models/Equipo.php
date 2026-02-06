@@ -22,6 +22,8 @@ class Equipo extends Model
         'disco_tipo',
         'sistema_operativo',
         'plan_recambio_id',
+        'pi_compra',
+        'pi_recambio',
         'codigo_activo',
         'marca',
         'modelo',
