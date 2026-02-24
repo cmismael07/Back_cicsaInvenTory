@@ -926,6 +926,72 @@ class EquipoController extends Controller
         return new EquipoResource($e->load(['tipo_equipo','ubicacion','responsable']));
     }
 
+    public function notifyAsignacion(Request $request, $id)
+    {
+        try {
+            $hist = HistorialMovimiento::with(['equipo','responsable'])->findOrFail($id);
+            $equipo = $hist->equipo;
+
+            $settings = EmailSetting::first();
+            if (! $settings) {
+                return response()->json(['message' => 'Email settings not configured'], 400);
+            }
+            if (! ($settings->notificar_asignacion ?? false)) {
+                return response()->json(['message' => 'Notificaciones de asignación deshabilitadas'], 200);
+            }
+
+            $cc = is_array($settings->correos_copia) ? $settings->correos_copia : [];
+            $to = null;
+            $assignedName = null;
+            if (! empty($equipo?->responsable_id)) {
+                $user = User::find($equipo->responsable_id);
+                $to = $user?->email ?? $user?->correo ?? null;
+                $assignedName = $user?->name ?? $user?->nombre ?? null;
+            }
+
+            if (empty($to)) {
+                if (! empty($cc)) {
+                    $to = array_shift($cc);
+                } else {
+                    return response()->json(['message' => 'No hay destinatario configurado'], 400);
+                }
+            }
+
+            $codigo = $equipo?->codigo_activo ?? ('Equipo #' . ($equipo?->id ?? $hist->equipo_id));
+            $subject = "Asignación de equipo - {$codigo}";
+
+            $lines = [];
+            $lines[] = "Se ha asignado el equipo: {$codigo}";
+            if (! empty($assignedName)) $lines[] = "Asignado a: {$assignedName}";
+            if (! empty($hist->nota)) {
+                $lines[] = "";
+                $lines[] = "Observaciones:";
+                $lines[] = $hist->nota;
+            }
+            $body = implode("\n", $lines);
+
+            $attachments = [];
+            if ($request->hasFile('archivo')) {
+                $file = $request->file('archivo');
+                $attachments[] = $file->store('asignaciones', 'public');
+            } elseif (! empty($hist->archivo)) {
+                $attachments[] = $hist->archivo;
+            }
+
+            $sent = app(DynamicEmailService::class)->sendRaw($to, $subject, $body, $cc, $attachments);
+
+            return response()->json([
+                'ok' => $sent,
+                'to' => $to,
+                'cc_count' => count($cc),
+                'attachments' => $attachments,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('notifyAsignacion failed', ['error' => $e->getMessage(), 'id' => $id]);
+            return response()->json(['message' => 'Error enviando notificación', 'error' => $e->getMessage()], 500);
+        }
+    }
+
     public function darBaja(Request $request, $id)
     {
         $e = Equipo::findOrFail($id);

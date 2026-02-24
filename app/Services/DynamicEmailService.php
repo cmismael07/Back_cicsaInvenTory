@@ -96,12 +96,12 @@ class DynamicEmailService
                     try {
                         $path = $att;
                         // If path looks like a storage public relative path, resolve it.
-                        if (!file_exists($path) && Storage::disk('public')->exists($att)) {
-                            $path = Storage::disk('public')->path($att);
-                        }
-                        if (is_string($path) && file_exists($path)) {
+                        if (Storage::disk('public')->exists($att)) {
+                            $message->attachFromStorageDisk('public', $att);
+                            Log::info('DynamicEmailService: attached file', ['attachment' => $att, 'disk' => 'public']);
+                        } elseif (is_string($path) && file_exists($path)) {
                             $message->attach($path);
-                            Log::info('DynamicEmailService: attached file', ['attachment' => $path]);
+                            Log::info('DynamicEmailService: attached file', ['attachment' => $path, 'disk' => 'filesystem']);
                         } else {
                             Log::warning('DynamicEmailService: attachment not found, skipping', ['attachment' => $att]);
                         }
