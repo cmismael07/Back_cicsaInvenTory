@@ -1,9 +1,42 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 
 Route::get('/', function () {
-    return view('welcome');
+    $routes = collect(app('router')->getRoutes()->getRoutes())
+        ->map(function ($route) {
+            $uri = $route->uri();
+            if (!Str::startsWith($uri, 'api/')) {
+                return null;
+            }
+
+            $methods = collect($route->methods())
+                ->reject(fn ($m) => $m === 'HEAD')
+                ->values()
+                ->all();
+
+            $middleware = $route->gatherMiddleware();
+            $authRequired = collect($middleware)->contains(function ($mw) {
+                return str_contains((string) $mw, 'auth:sanctum');
+            });
+
+            return [
+                'uri' => '/' . $uri,
+                'methods' => $methods,
+                'auth_required' => $authRequired,
+                'name' => $route->getName(),
+            ];
+        })
+        ->filter()
+        ->sortBy(['auth_required', 'uri'])
+        ->values();
+
+    return view('api-index', [
+        'baseUrl' => url('/api'),
+        'publicRoutes' => $routes->where('auth_required', false)->values(),
+        'protectedRoutes' => $routes->where('auth_required', true)->values(),
+    ]);
 });
 
 use Illuminate\Http\Request;
