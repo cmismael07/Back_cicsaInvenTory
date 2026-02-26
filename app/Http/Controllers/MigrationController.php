@@ -76,11 +76,10 @@ class MigrationController extends Controller
                 $tipoNombre = $norm['tipo_equipo'] ?? $norm['tipoequipo'] ?? $norm['tipo'] ?? $norm['tipo_equipo_name'] ?? null;
                 $tipoId = null;
                 if ($tipoNombre) {
-                    $tipo = DB::table('tipos_equipos')->whereRaw('LOWER(nombre) = ?', [Str::lower($tipoNombre)])->first();
+                    $tipo = DB::table('tipo_equipos')->whereRaw('LOWER(nombre) = ?', [Str::lower($tipoNombre)])->first();
                     if (! $tipo) {
-                        // The `tipos_equipos` table does not have a `frecuencia_anual` column
                         // Insert only the columns that exist to avoid SQL errors.
-                        $tipoId = DB::table('tipos_equipos')->insertGetId([
+                        $tipoId = DB::table('tipo_equipos')->insertGetId([
                             'nombre' => $tipoNombre,
                             'descripcion' => null,
                             'created_at' => now(),
@@ -91,7 +90,7 @@ class MigrationController extends Controller
                     }
                 } else {
                     // fallback to first tipo
-                    $tipo = DB::table('tipos_equipos')->first();
+                    $tipo = DB::table('tipo_equipos')->first();
                     $tipoId = $tipo?->id;
                 }
 

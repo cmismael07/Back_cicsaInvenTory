@@ -10,10 +10,10 @@ class TipoEquipoSeeder extends Seeder
     public function run(): void
     {
         $items = [
-            ['nombre' => 'Laptop', 'descripcion' => 'Computadora portátil'],
-            ['nombre' => 'Desktop', 'descripcion' => 'Computadora de escritorio'],
-            ['nombre' => 'Monitor', 'descripcion' => 'Pantalla externa'],
-            ['nombre' => 'Impresora', 'descripcion' => 'Impresora láser o inyección'],
+            ['nombre' => 'Laptop', 'descripcion' => 'Computadora portátil', 'frecuencia_anual' => 1, 'considerar_recambio' => true],
+            ['nombre' => 'Desktop', 'descripcion' => 'Computadora de escritorio', 'frecuencia_anual' => 1, 'considerar_recambio' => true],
+            ['nombre' => 'Monitor', 'descripcion' => 'Pantalla externa', 'frecuencia_anual' => 1, 'considerar_recambio' => true],
+            ['nombre' => 'Impresora', 'descripcion' => 'Impresora láser o inyección', 'frecuencia_anual' => 1, 'considerar_recambio' => false],
         ];
 
         foreach ($items as $it) {

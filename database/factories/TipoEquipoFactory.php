@@ -14,6 +14,8 @@ class TipoEquipoFactory extends Factory
         return [
             'nombre' => $this->faker->word(),
             'descripcion' => $this->faker->sentence(),
+            'frecuencia_anual' => 1,
+            'considerar_recambio' => true,
         ];
     }
 }

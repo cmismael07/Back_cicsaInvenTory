@@ -11,7 +11,11 @@ class TipoEquipo extends Model
 
     protected $table = 'tipo_equipos';
 
-    protected $fillable = ['nombre','descripcion','frecuencia_anual'];
+    protected $fillable = ['nombre', 'descripcion', 'frecuencia_anual', 'considerar_recambio'];
+
+    protected $casts = [
+        'considerar_recambio' => 'boolean',
+    ];
 
     public function equipos()
     {

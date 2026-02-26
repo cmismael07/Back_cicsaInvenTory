@@ -51,31 +51,50 @@ class ReportController extends Controller
 
     public function replacementCandidates()
     {
-        $candidates = \App\Models\Equipo::with('tipo_equipo')
-            ->whereNull('plan_recambio_id')
+        $baseQuery = \App\Models\Equipo::query()
             ->where(function ($q) {
                 $q->whereNull('estado')->orWhereRaw('LOWER(estado) NOT LIKE ?', ['%baja%']);
             })
-            ->get()
-            ->filter(function ($e) {
-                $typeName = strtolower((string) ($e->tipo_equipo?->nombre ?? ''));
-                $renovTypes = ['desktop', 'laptop', 'workstation', 'portatil', 'notebook', 'servidor'];
-                $isComputing = false;
-                foreach ($renovTypes as $t) {
-                    if (str_contains($typeName, $t)) { $isComputing = true; break; }
-                }
-                if (! $isComputing) return false;
-
-                if (empty($e->fecha_compra)) return false;
-                try {
-                    $age = \Carbon\Carbon::parse($e->fecha_compra)->diffInYears(now());
-                } catch (\Throwable $ex) {
-                    return false;
-                }
-                return $age >= 4;
+            ->whereHas('tipo_equipo', function ($q) {
+                $q->where('considerar_recambio', true);
             });
 
-        return EquipoResource::collection($candidates->values());
+        $baseTotal = (clone $baseQuery)->count();
+        $targetCount = $baseTotal > 0 ? max(1, (int) ceil($baseTotal * 0.2)) : 0;
+
+        $candidates = \App\Models\Equipo::with('tipo_equipo')
+            ->where(function ($q) {
+                $q->whereNull('estado')->orWhereRaw('LOWER(estado) NOT LIKE ?', ['%baja%']);
+            })
+            ->whereNull('plan_recambio_id')
+            ->whereHas('tipo_equipo', function ($q) {
+                $q->where('considerar_recambio', true);
+            })
+            ->where(function ($q) {
+                $q->whereNull('pi_recambio')->orWhere('pi_recambio', '');
+            })
+            ->whereNotNull('fecha_compra')
+            ->get();
+
+        $eligible = $candidates->map(function ($e) {
+            try {
+                $age = \Carbon\Carbon::parse($e->fecha_compra)->diffInYears(now());
+            } catch (\Throwable $ex) {
+                return null;
+            }
+            if ($age < 4) {
+                return null;
+            }
+            return ['equipo' => $e, 'age' => $age];
+        })->filter();
+
+        $selected = $eligible
+            ->sortByDesc('age')
+            ->take($targetCount)
+            ->pluck('equipo')
+            ->values();
+
+        return EquipoResource::collection($selected);
     }
 
     public function movementHistory()

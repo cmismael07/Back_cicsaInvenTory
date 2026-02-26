@@ -301,6 +301,7 @@ class PlanMantenimientoController extends Controller
         $mesDefault = (int) ($request->input('mes') ?? 1);
 
         $detalles = [];
+        $freqCounters = [];
         foreach ($equipos as $e) {
             $freq = 1;
             if (!empty($e->tipo_equipo) && isset($e->tipo_equipo->frecuencia_anual)) {
@@ -309,16 +310,23 @@ class PlanMantenimientoController extends Controller
             // Skip types explicitly excluded (0)
             if ($freq <= 0) continue;
 
-            // Distribute months across the year: for i=0..freq-1 -> month = floor((i*12)/freq) + 1
+            if (!isset($freqCounters[$freq])) $freqCounters[$freq] = 0;
+            $shift = $freqCounters[$freq] % 12;
+            if ($mesDefault > 1) {
+                $shift = ($shift + ($mesDefault - 1)) % 12;
+            }
+            $freqCounters[$freq] += 1;
+
+            // Build base months for this frequency (e.g. 2 -> [1,7])
+            $baseMonths = [];
             for ($i = 0; $i < $freq; $i++) {
-                $month = (int) (floor(($i * 12) / $freq) + 1);
-                // If client provided a specific start month, rotate sequence so first month >= mesDefault
-                if ($mesDefault > 1) {
-                    // rotate by finding offset between mesDefault and first generated month
-                    $offset = ($mesDefault - $month + 12) % 12;
-                    $rotated = ($month + $offset - 1) % 12 + 1;
-                    $month = $rotated;
-                }
+                $baseMonths[] = (int) (floor(($i * 12) / $freq) + 1);
+            }
+
+            // Distribute across equipos by shifting months through the year
+            for ($i = 0; $i < $freq; $i++) {
+                $base = $baseMonths[$i] ?? 1;
+                $month = (int) ((($base + $shift - 1) % 12) + 1);
 
                 $detalles[] = [
                     'equipo_id' => $e->id,
