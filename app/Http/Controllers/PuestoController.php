@@ -15,7 +15,28 @@ class PuestoController extends Controller
 
     public function store(Request $request)
     {
-        $p = Puesto::create($request->only('nombre'));
+        $input = $request->all();
+        // Normalize when frontend sends nested object or raw string
+        if (array_key_exists('nombre', $input)) {
+            if (is_array($input['nombre']) && isset($input['nombre']['nombre'])) {
+                $input['nombre'] = $input['nombre']['nombre'];
+            } elseif (is_array($input['nombre']) && isset($input['nombre']['name'])) {
+                $input['nombre'] = $input['nombre']['name'];
+            } elseif (is_object($input['nombre'])) {
+                $obj = (array) $input['nombre'];
+                if (isset($obj['nombre'])) $input['nombre'] = $obj['nombre'];
+                elseif (isset($obj['name'])) $input['nombre'] = $obj['name'];
+            }
+        }
+
+        $nombre = $input['nombre'] ?? $request->input('nombre');
+        $payload = ['nombre' => is_string($nombre) ? trim($nombre) : $nombre];
+        $request->merge($payload);
+        $data = $request->validate([
+            'nombre' => 'required|string',
+        ]);
+
+        $p = Puesto::create($data);
         return new PuestoResource($p);
     }
 
@@ -27,7 +48,27 @@ class PuestoController extends Controller
     public function update(Request $request, $id)
     {
         $p = Puesto::findOrFail($id);
-        $p->update($request->only('nombre'));
+        $input = $request->all();
+        if (array_key_exists('nombre', $input)) {
+            if (is_array($input['nombre']) && isset($input['nombre']['nombre'])) {
+                $input['nombre'] = $input['nombre']['nombre'];
+            } elseif (is_array($input['nombre']) && isset($input['nombre']['name'])) {
+                $input['nombre'] = $input['nombre']['name'];
+            } elseif (is_object($input['nombre'])) {
+                $obj = (array) $input['nombre'];
+                if (isset($obj['nombre'])) $input['nombre'] = $obj['nombre'];
+                elseif (isset($obj['name'])) $input['nombre'] = $obj['name'];
+            }
+        }
+
+        $nombre = $input['nombre'] ?? $request->input('nombre');
+        $payload = ['nombre' => is_string($nombre) ? trim($nombre) : $nombre];
+        $request->merge($payload);
+        $data = $request->validate([
+            'nombre' => 'required|string',
+        ]);
+
+        $p->update($data);
         return new PuestoResource($p);
     }
 

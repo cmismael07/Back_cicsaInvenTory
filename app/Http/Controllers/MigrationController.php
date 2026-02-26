@@ -112,7 +112,18 @@ class MigrationController extends Controller
                     'modelo' => $norm['modelo'] ?? $norm['model'] ?? null,
                     'serial' => $norm['serie'] ?? $norm['serial'] ?? $norm['numero_serie'] ?? null,
                     'fecha_compra' => $fechaCompra,
-                    'valor_compra' => isset($norm['valor']) ? floatval(str_replace([',',' '], ['','.'], $norm['valor']) ) : null,
+                    'valor_compra' => isset($norm['valor_compra']) ? floatval(str_replace([',',' '], ['','.'], $norm['valor_compra']))
+                        : (isset($norm['valor']) ? floatval(str_replace([',',' '], ['','.'], $norm['valor']))
+                        : (isset($norm['costo']) ? floatval(str_replace([',',' '], ['','.'], $norm['costo']))
+                        : (isset($norm['precio']) ? floatval(str_replace([',',' '], ['','.'], $norm['precio']))
+                        : null))),
+                    'procesador' => $norm['procesador'] ?? $norm['cpu'] ?? null,
+                    'ram' => $norm['ram'] ?? null,
+                    'disco_capacidad' => $norm['disco_capacidad'] ?? $norm['capacidad_disco'] ?? $norm['disco'] ?? null,
+                    'disco_tipo' => $norm['disco_tipo'] ?? $norm['tipo_disco'] ?? null,
+                    'sistema_operativo' => $norm['sistema_operativo'] ?? $norm['so'] ?? $norm['s_o'] ?? null,
+                    'pi_compra' => $norm['pi_compra'] ?? $norm['pi_compra_id'] ?? $norm['pi'] ?? null,
+                    'pi_recambio' => $norm['pi_recambio'] ?? $norm['pi_recambio_id'] ?? null,
                     // Defaults for migrated equipos: estado => 'disponible', ubicacion_id => 1
                     'estado' => 'disponible',
                     'ubicacion_id' => 1,
