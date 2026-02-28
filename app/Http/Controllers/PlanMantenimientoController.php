@@ -286,9 +286,25 @@ class PlanMantenimientoController extends Controller
     // Genera una propuesta de detalles de mantenimiento para una ciudad dada
     public function generateProposal(Request $request)
     {
-        $ciudadId = $request->input('ciudad_id') ?? $request->input('ciudadId') ?? $request->input('city_id');
+        $ciudadId = $request->input('ciudad_id')
+            ?? $request->input('ciudadId')
+            ?? $request->input('city_id')
+            ?? $request->input('cityId')
+            ?? $request->input('sede_id')
+            ?? $request->input('sedeId')
+            ?? $request->input('ciudad.id')
+            ?? $request->input('city.id');
+
+        if (is_array($ciudadId) && isset($ciudadId['id'])) {
+            $ciudadId = $ciudadId['id'];
+        }
+
         if (empty($ciudadId)) {
-            return response()->json(['message' => 'ciudad_id es requerido'], 422);
+            return response()->json([
+                'message' => 'ciudad_id es requerido',
+                'hint' => 'Envía ciudad_id (o ciudadId/city_id) en el body.',
+                'received_keys' => array_keys($request->all()),
+            ], 422);
         }
 
         logger()->info('PlanMantenimientoController@generateProposal called', ['ciudad_id' => $ciudadId]);

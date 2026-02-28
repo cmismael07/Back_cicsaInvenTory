@@ -212,12 +212,50 @@ class EquipoController extends Controller
             if (array_key_exists($k, $req) && ! empty($req[$k])) { $ciudadId = $req[$k]; break; }
         }
 
+        $tipoEquipoId = null;
+        foreach (['tipo_equipo_id','tipoEquipoId','tipo_id','tipoId','type_id','typeId'] as $k) {
+            if (array_key_exists($k, $req) && $req[$k] !== null && $req[$k] !== '') {
+                $tipoEquipoId = $req[$k];
+                break;
+            }
+        }
+
+        $tipoEquipoNombre = null;
+        foreach (['tipo_equipo','tipo','type','tipo_nombre','tipoNombre'] as $k) {
+            if (array_key_exists($k, $req) && $req[$k] !== null && $req[$k] !== '') {
+                $val = $req[$k];
+                if (is_array($val)) {
+                    $tipoEquipoId = $tipoEquipoId ?? ($val['id'] ?? null);
+                    $tipoEquipoNombre = $val['nombre'] ?? $val['name'] ?? null;
+                } elseif (is_numeric($val)) {
+                    $tipoEquipoId = $tipoEquipoId ?? $val;
+                } else {
+                    $tipoEquipoNombre = (string) $val;
+                }
+                break;
+            }
+        }
+
         $query = Equipo::with(['tipo_equipo','ubicacion','responsable']);
         if ($ciudadId) {
             $query = $query->whereHas('ubicacion', function ($q) use ($ciudadId) {
                 $q->where('ciudad_id', $ciudadId);
             });
         }
+
+        if ($tipoEquipoId) {
+            $query = $query->where('tipo_equipo_id', $tipoEquipoId);
+        } elseif (!empty($tipoEquipoNombre)) {
+            $query = $query->whereHas('tipo_equipo', function ($q) use ($tipoEquipoNombre) {
+                $q->where('nombre', 'like', '%' . $tipoEquipoNombre . '%');
+            });
+        }
+
+        Log::debug('EquipoController.index filtros', [
+            'ciudad_id' => $ciudadId,
+            'tipo_equipo_id' => $tipoEquipoId,
+            'tipo_equipo_nombre' => $tipoEquipoNombre,
+        ]);
 
         return EquipoResource::collection($query->get());
     }

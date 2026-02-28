@@ -3,9 +3,28 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
+    private function hasConstraint(string $table, string $constraint): bool
+    {
+        try {
+            $driver = DB::getDriverName();
+            if ($driver === 'mysql') {
+                $db = DB::getDatabaseName();
+                $rows = DB::select(
+                    'SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?',
+                    [$db, $table, $constraint]
+                );
+                return !empty($rows);
+            }
+        } catch (\Throwable $e) {
+            // Si falla introspección, asumir que no existe para no bloquear migración
+        }
+        return false;
+    }
+
     public function up()
     {
         // Drop foreign keys before renaming
@@ -31,12 +50,14 @@ return new class extends Migration
         }
 
         // Recreate foreign keys with new table names
-        if (Schema::hasTable('detalles_planes_mantenimiento')) {
+        if (Schema::hasTable('detalles_planes_mantenimiento')
+            && ! $this->hasConstraint('detalles_planes_mantenimiento', 'detalles_planes_mantenimiento_plan_id_foreign')) {
             Schema::table('detalles_planes_mantenimiento', function (Blueprint $table) {
                 $table->foreign('plan_id')->references('id')->on('planes_mantenimiento')->cascadeOnDelete();
             });
         }
-        if (Schema::hasTable('ejecuciones_mantenimiento')) {
+        if (Schema::hasTable('ejecuciones_mantenimiento')
+            && ! $this->hasConstraint('ejecuciones_mantenimiento', 'ejecuciones_mantenimiento_detail_id_foreign')) {
             Schema::table('ejecuciones_mantenimiento', function (Blueprint $table) {
                 $table->foreign('detail_id')->references('id')->on('detalles_planes_mantenimiento')->cascadeOnDelete();
             });

@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('equipos', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tipo_equipo_id')->constrained('tipos_equipos')->cascadeOnDelete();
+            $table->foreignId('tipo_equipo_id')->constrained('tipo_equipos')->cascadeOnDelete();
             $table->foreignId('ubicacion_id')->nullable()->constrained('ubicaciones')->nullOnDelete();
             $table->foreignId('responsable_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('codigo_activo')->unique();

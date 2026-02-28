@@ -77,11 +77,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/planes-mantenimiento/{id}', [PlanMantenimientoController::class, 'show']);
     Route::post('/planes-mantenimiento', [PlanMantenimientoController::class, 'store']);
     Route::post('/planes-mantenimiento/propuesta', [PlanMantenimientoController::class, 'generateProposal']);
+    Route::get('/planes-mantenimiento/propuesta', [PlanMantenimientoController::class, 'generateProposal']);
     Route::put('/detalles-planes-mantenimiento/{id}/mes', [PlanMantenimientoController::class, 'updateDetailMonth']);
     Route::post('/detalles-planes-mantenimiento/{id}/iniciar', [PlanMantenimientoController::class, 'startFromPlan']);
     Route::post('/ejecuciones-mantenimiento/{id}', [PlanMantenimientoController::class, 'registerExecution']);
     Route::get('/ejecuciones-mantenimiento/{id}', [PlanMantenimientoController::class, 'getExecutions']);
     Route::get('/evidencias-mantenimiento/{id}', [PlanMantenimientoController::class, 'getEvidence']);
+
+    // Alias de compatibilidad (nombres en inglés)
+    Route::get('/maintenance-plans', [PlanMantenimientoController::class, 'index']);
+    Route::get('/maintenance-plans/{id}', [PlanMantenimientoController::class, 'show']);
+    Route::post('/maintenance-plans', [PlanMantenimientoController::class, 'store']);
+    Route::post('/maintenance-plans/proposal', [PlanMantenimientoController::class, 'generateProposal']);
+    Route::get('/maintenance-plans/proposal', [PlanMantenimientoController::class, 'generateProposal']);
+    Route::put('/maintenance-plan-details/{id}/month', [PlanMantenimientoController::class, 'updateDetailMonth']);
+    Route::post('/maintenance-plan-details/{id}/start', [PlanMantenimientoController::class, 'startFromPlan']);
+    Route::post('/maintenance-executions/{id}', [PlanMantenimientoController::class, 'registerExecution']);
+    Route::get('/maintenance-executions/{id}', [PlanMantenimientoController::class, 'getExecutions']);
+    Route::get('/maintenance-evidence/{id}', [PlanMantenimientoController::class, 'getEvidence']);
     Route::get('/notificaciones', [NotificationController::class, 'index']);
 
     // Bóveda de credenciales

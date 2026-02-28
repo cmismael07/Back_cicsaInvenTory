@@ -11,6 +11,19 @@ use App\Models\Equipo;
 
 class PlanRecambioController extends Controller
 {
+    protected function detalleModelAvailable(): bool
+    {
+        return class_exists(\App\Models\DetallePlanRecambio::class);
+    }
+
+    protected function detalleBaseQuery()
+    {
+        if ($this->detalleModelAvailable()) {
+            return \App\Models\DetallePlanRecambio::query();
+        }
+        return DB::table('detalle_plan_recambios');
+    }
+
     public function index()
     {
         $plans = PlanRecambio::orderByDesc('fecha_creacion')->get();
@@ -20,7 +33,7 @@ class PlanRecambioController extends Controller
     public function show($id)
     {
         $plan = PlanRecambio::findOrFail($id);
-        $details = DetallePlanRecambio::where('plan_id', $plan->id)->get();
+        $details = $this->detalleBaseQuery()->where('plan_id', $plan->id)->get();
         return response()->json(['plan' => $plan, 'details' => $details]);
     }
 
@@ -29,10 +42,38 @@ class PlanRecambioController extends Controller
         $planData = $request->input('plan', $request->only([
             'id','anio','nombre','creado_por','fecha_creacion','presupuesto_estimado','total_equipos','estado','pi_recambio'
         ]));
-        $details = $request->input('details', []);
+        $rawDetails = $request->input('details', []);
+
+        $details = collect($rawDetails)->map(function ($d) {
+            $equipoId = $d['equipo_id'] ?? $d['equipoId'] ?? $d['id_equipo'] ?? null;
+            return [
+                'equipo_id' => $equipoId,
+                'equipo_codigo' => $d['equipo_codigo'] ?? $d['equipoCodigo'] ?? '',
+                'equipo_modelo' => $d['equipo_modelo'] ?? $d['equipoModelo'] ?? null,
+                'equipo_marca' => $d['equipo_marca'] ?? $d['equipoMarca'] ?? null,
+                'equipo_antiguedad' => $d['equipo_antiguedad'] ?? $d['equipoAntiguedad'] ?? 0,
+                'valor_reposicion' => $d['valor_reposicion'] ?? $d['valorReposicion'] ?? 0,
+            ];
+        })->values()->all();
 
         if (empty($planData['nombre']) || empty($planData['anio'])) {
             return response()->json(['message' => 'nombre y anio son requeridos'], 422);
+        }
+
+        foreach ($details as $idx => $d) {
+            if (empty($d['equipo_id'])) {
+                return response()->json([
+                    'message' => 'Detalle inválido: equipo_id es requerido en todos los items',
+                    'detail_index' => $idx,
+                ], 422);
+            }
+            if (!Equipo::where('id', $d['equipo_id'])->exists()) {
+                return response()->json([
+                    'message' => 'Detalle inválido: equipo_id no existe',
+                    'detail_index' => $idx,
+                    'equipo_id' => $d['equipo_id'],
+                ], 422);
+            }
         }
 
         $result = null;
@@ -55,13 +96,13 @@ class PlanRecambioController extends Controller
                 $plan->update($payload);
 
                 // Track existing equipos to release removed ones
-                $oldEquipos = DetallePlanRecambio::where('plan_id', $plan->id)
+                $oldEquipos = $this->detalleBaseQuery()->where('plan_id', $plan->id)
                     ->pluck('equipo_id')
                     ->filter()
                     ->values();
 
                 // Replace previous details for this plan
-                DetallePlanRecambio::where('plan_id', $plan->id)->delete();
+                $this->detalleBaseQuery()->where('plan_id', $plan->id)->delete();
 
                 // Determine equipos that were removed from the plan
                 $newEquipos = collect($details)
@@ -81,22 +122,28 @@ class PlanRecambioController extends Controller
             }
 
             foreach ($details as $d) {
-                $detalle = DetallePlanRecambio::create([
+                $detallePayload = [
                     'plan_id' => $plan->id,
-                    'equipo_id' => $d['equipo_id'] ?? null,
-                    'equipo_codigo' => $d['equipo_codigo'] ?? '',
-                    'equipo_modelo' => $d['equipo_modelo'] ?? null,
-                    'equipo_marca' => $d['equipo_marca'] ?? null,
-                    'equipo_antiguedad' => $d['equipo_antiguedad'] ?? 0,
-                    'valor_reposicion' => $d['valor_reposicion'] ?? 0,
-                ]);
+                    'equipo_id' => $d['equipo_id'],
+                    'equipo_codigo' => $d['equipo_codigo'],
+                    'equipo_modelo' => $d['equipo_modelo'],
+                    'equipo_marca' => $d['equipo_marca'],
+                    'equipo_antiguedad' => $d['equipo_antiguedad'],
+                    'valor_reposicion' => $d['valor_reposicion'],
+                ];
 
-                if (!empty($detalle->equipo_id)) {
+                if ($this->detalleModelAvailable()) {
+                    \App\Models\DetallePlanRecambio::create($detallePayload);
+                } else {
+                    DB::table('detalle_plan_recambios')->insert($detallePayload);
+                }
+
+                if (!empty($d['equipo_id'])) {
                     $updates = ['plan_recambio_id' => $plan->id];
                     if (!empty($payload['pi_recambio']) && ($payload['estado'] ?? '') === 'ACTIVO') {
                         $updates['pi_recambio'] = $payload['pi_recambio'];
                     }
-                    Equipo::where('id', $detalle->equipo_id)->update($updates);
+                    Equipo::where('id', $d['equipo_id'])->update($updates);
                 }
             }
 
@@ -104,7 +151,11 @@ class PlanRecambioController extends Controller
             $result = $plan;
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('PlanRecambio save failed', ['error' => $e->getMessage()]);
+            Log::error('PlanRecambio save failed', [
+                'error' => $e->getMessage(),
+                'plan' => $planData,
+                'details_count' => count($details),
+            ]);
             return response()->json(['message' => 'No se pudo guardar el plan', 'error' => $e->getMessage()], 500);
         }
 
@@ -116,9 +167,9 @@ class PlanRecambioController extends Controller
         DB::beginTransaction();
         try {
             $plan = PlanRecambio::findOrFail($id);
-            $detailEquipos = DetallePlanRecambio::where('plan_id', $plan->id)->pluck('equipo_id')->filter()->values();
+            $detailEquipos = $this->detalleBaseQuery()->where('plan_id', $plan->id)->pluck('equipo_id')->filter()->values();
 
-            DetallePlanRecambio::where('plan_id', $plan->id)->delete();
+            $this->detalleBaseQuery()->where('plan_id', $plan->id)->delete();
             $plan->delete();
 
             if ($detailEquipos->count() > 0) {
@@ -158,7 +209,7 @@ class PlanRecambioController extends Controller
             }
             $plan->update($updatePayload);
 
-            $detailEquipos = DetallePlanRecambio::where('plan_id', $plan->id)->pluck('equipo_id')->filter()->values();
+            $detailEquipos = $this->detalleBaseQuery()->where('plan_id', $plan->id)->pluck('equipo_id')->filter()->values();
             if ($detailEquipos->count() > 0) {
                 Equipo::whereIn('id', $detailEquipos)->update([
                     'plan_recambio_id' => $plan->id,
